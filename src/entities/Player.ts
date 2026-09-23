@@ -6,7 +6,7 @@ import { SKILLS } from '../data/skills';
 import { InputState } from '../input/InputState';
 import type { CombatWorld } from '../systems/CombatWorld';
 import { runSkill } from '../systems/SkillRunner';
-import { calcPlayerStats } from '../systems/StatCalculator';
+import { currentStats } from '../systems/Equipment';
 import type { Enemy } from './Enemy';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
@@ -16,7 +16,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   stats!: Stats;
   hp = 1;
   dead = false;
-  readonly radius = 5;
+  readonly radius = 6;
 
   private basicAttack!: SkillDef;
   private attackTimer = 0;
@@ -29,21 +29,28 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private shadow: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, 'warrior', 0);
+    super(scene, x, y, 'car_warrior', 0);
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.shadow = scene.add.image(x, y, 'shadow', 0).setAlpha(0.35);
-    this.body.setCircle(this.radius, 8 - this.radius, 11 - this.radius);
+    this.shadow = scene.add.image(x, y, 'shadow_wide', 0).setAlpha(0.35);
+    this.body.setCircle(this.radius, 8 - this.radius, 12 - this.radius);
     this.body.setCollideWorldBounds(true);
   }
 
-  setJob(jobId: JobId, level: number) {
+  setJob(jobId: JobId) {
     const job = JOBS[jobId];
     this.jobId = jobId;
-    this.stats = calcPlayerStats(jobId, level);
+    this.stats = currentStats(jobId);
     this.hp = this.stats.maxHp;
     this.basicAttack = SKILLS[job.basicAttack];
     this.setTexture(job.sprite, 0);
+  }
+
+  /** 装備・レベルが変わったときにステータスを再計算（HPは割合を保つ） */
+  recalcStats(fullHeal = false) {
+    const ratio = this.hp / this.stats.maxHp;
+    this.stats = currentStats(this.jobId);
+    this.hp = fullHeal ? this.stats.maxHp : Math.max(1, Math.round(this.stats.maxHp * ratio));
   }
 
   get isInvulnerable() {
@@ -73,7 +80,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   updatePlayer(dt: number, world: CombatWorld) {
-    this.shadow.setPosition(Math.round(this.x), Math.round(this.y) + 7).setDepth(this.y - 1);
+    this.shadow.setPosition(Math.round(this.x), Math.round(this.y) + 6).setDepth(this.y - 1);
     if (this.dead) {
       this.body.setVelocity(0, 0);
       return;
@@ -106,7 +113,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (lookX < -0.1) this.setFlipX(true);
     else if (lookX > 0.1) this.setFlipX(false);
 
-    if (moving) this.anims.play(`${this.texture.key}_walk`, true);
+    if (moving) this.anims.play(`${this.texture.key}_move`, true);
     else {
       this.anims.stop();
       this.setFrame(0);

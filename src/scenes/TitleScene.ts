@@ -14,11 +14,12 @@ export class TitleScene extends Phaser.Scene {
       this.cameras.main.setZoom(viewport.zoom).setOrigin(0, 0).setBackgroundColor('#1a1c2c');
       const cx = viewport.width / 2;
       const cy = viewport.height / 2;
-      createText(this, cx, cy - 60, 'ドットクエスト', 16, '#ffcd75').setOrigin(0.5);
+      createText(this, cx, cy - 60, 'フィットクエスト', 16, '#ffcd75').setOrigin(0.5);
       createText(this, cx, cy - 40, '〜 第1章 はじまりの草原 〜', 8, '#94b0c2').setOrigin(0.5);
-      this.add.sprite(cx, cy, 'warrior', 0).play('warrior_walk');
+      this.add.sprite(cx, cy, 'car_warrior', 0).play('car_warrior_move');
       const tap = createText(this, cx, cy + 50, 'タップしてはじめる', 8).setOrigin(0.5);
       this.tweens.add({ targets: tap, alpha: 0.2, duration: 600, yoyo: true, repeat: -1 });
+      createText(this, cx, viewport.height - viewport.safe.bottom - 10, `build ${__BUILD_TIME__}`, 6, '#566c86').setOrigin(0.5);
     };
     layout();
     EventBus.on(GameEvents.ViewportChanged, layout);

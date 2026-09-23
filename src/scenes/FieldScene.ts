@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import { DISPLAY, ENEMY, PLAYER } from '../config/balance';
+import { DISPLAY, ENEMY, LOOT, PLAYER } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
-import type { AreaDef } from '../core/types';
+import type { AreaDef, ItemInstance } from '../core/types';
 import { viewport } from '../core/Viewport';
 import { AREAS } from '../data/areas';
 import { ENEMIES } from '../data/enemies';
@@ -10,10 +10,15 @@ import { MAPS } from '../data/maps';
 import { MAP_MARKERS, TILE_TYPES } from '../data/tiles';
 import { Enemy } from '../entities/Enemy';
 import { FloatingTextPool } from '../entities/FloatingTextPool';
+import { LootDrop } from '../entities/LootDrop';
 import { Player } from '../entities/Player';
 import { InputState } from '../input/InputState';
 import { rollDamage } from '../systems/Combat';
+import { addToInventory } from '../systems/Equipment';
+import { rollDrop } from '../systems/LootGenerator';
+import { gainExp, killExp } from '../systems/Progression';
 import type { CombatWorld } from '../systems/CombatWorld';
+import { RAINBOW } from '../ui/rarityStyle';
 
 interface FieldData {
   areaId: string;
@@ -29,6 +34,8 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
   private walkable: { x: number; y: number }[] = [];
   private startPos = { x: 0, y: 0 };
   private respawnTimers: number[] = [];
+  private drops: LootDrop[] = [];
+  private fullWarnAt = 0;
   private hpBars!: Phaser.GameObjects.Graphics;
   private floatText!: FloatingTextPool;
   private sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -47,6 +54,7 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
     this.liveEnemies = [];
     this.respawnTimers = [];
     this.walkable = [];
+    this.drops = [];
   }
 
   create() {
@@ -54,7 +62,7 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
     this.buildMap();
 
     this.player = new Player(this, this.startPos.x, this.startPos.y);
-    this.player.setJob(gameState.currentJob, gameState.jobs[gameState.currentJob].level);
+    this.player.setJob(gameState.currentJob);
     this.physics.add.collider(this.player, this.layer);
 
     this.enemyGroup = this.physics.add.group();
@@ -84,8 +92,24 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
     cam.startFollow(this.player, true, 0.2, 0.2);
 
     const onViewport = () => cam.setZoom(viewport.zoom);
+    const onEquip = () => {
+      this.player.recalcStats();
+      this.emitHp();
+    };
+    const onLevelUp = (level: number) => {
+      this.player.recalcStats(true);
+      this.emitHp();
+      this.floatText.show(this.player.x, this.player.y - 12, `LEVEL UP! Lv${level}`, '#a7f070', true);
+      this.sparks.explode(20, this.player.x, this.player.y);
+    };
     EventBus.on(GameEvents.ViewportChanged, onViewport);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off(GameEvents.ViewportChanged, onViewport));
+    EventBus.on(GameEvents.EquipmentChanged, onEquip);
+    EventBus.on(GameEvents.LevelUp, onLevelUp);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      EventBus.off(GameEvents.ViewportChanged, onViewport);
+      EventBus.off(GameEvents.EquipmentChanged, onEquip);
+      EventBus.off(GameEvents.LevelUp, onLevelUp);
+    });
 
     if (!this.scene.isActive('UI')) this.scene.launch('UI');
     this.scene.bringToTop('UI');
@@ -175,11 +199,13 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
     const died = enemy.applyDamage(res.amount, fromX, fromY);
     this.floatText.show(enemy.x, enemy.y - 6, `${res.amount}`, res.crit ? '#ffcd75' : '#f4f4f4', res.crit);
     this.sparks.explode(res.crit ? 8 : 4, enemy.x, enemy.y);
-    if (res.crit) this.cameras.main.shake(60, 0.004);
     if (died) {
       this.sparks.explode(12, enemy.x, enemy.y);
       this.respawnTimers.push(ENEMY.respawnDelay);
       EventBus.emit(GameEvents.EnemyKilled, enemy.def.id, enemy.x, enemy.y);
+      gainExp(killExp(enemy.def.exp, this.area.level));
+      const item = rollDrop({ itemLevel: this.area.level, jobId: this.player.jobId, dropRate: enemy.def.dropRate });
+      if (item) this.spawnDrop(item, enemy.x, enemy.y);
     }
   }
 
@@ -189,12 +215,44 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
     const res = rollDamage({ atk: rawAtk, critRate: 0, critDamage: 0 }, 1, p.stats.def);
     const died = p.applyDamage(res.amount);
     this.floatText.show(p.x, p.y - 8, `${res.amount}`, '#b13e53');
-    this.cameras.main.shake(80, 0.006);
-    // 軽く押し返す
-    const ang = Math.atan2(p.y - fromY, p.x - fromX);
-    p.setPosition(p.x + Math.cos(ang) * 3, p.y + Math.sin(ang) * 3);
+    EventBus.emit(GameEvents.PlayerDamaged, res.amount, fromX, fromY);
     this.emitHp();
     if (died) this.onPlayerDied();
+  }
+
+  // ------------------------------------------------------------ ドロップ
+
+  private spawnDrop(item: ItemInstance, x: number, y: number) {
+    // 上限を超えたら古いノーマルから消す
+    if (this.drops.length >= LOOT.maxGroundItems) {
+      const old = this.drops.find((d) => d.item.rarity === 'normal') ?? this.drops[0];
+      old.destroy();
+      this.drops.splice(this.drops.indexOf(old), 1);
+    }
+    this.drops.push(new LootDrop(this, item, x, y));
+    if (item.rarity === 'legendary') {
+      this.cameras.main.flash(250, 255, 245, 220);
+      EventBus.emit(GameEvents.Toast, 'レジェンダリーが出た！', RAINBOW);
+    }
+  }
+
+  private updatePickup() {
+    const p = this.player;
+    if (p.dead) return;
+    for (let i = this.drops.length - 1; i >= 0; i--) {
+      const d = this.drops[i];
+      if (!d.ready || Math.hypot(d.x - p.x, d.y - p.y) > LOOT.pickupRange) continue;
+      if (!addToInventory(d.item)) {
+        if (this.time.now > this.fullWarnAt) {
+          EventBus.emit(GameEvents.Toast, '持ち物がいっぱい！', '#b13e53');
+          this.fullWarnAt = this.time.now + 2500;
+        }
+        return;
+      }
+      d.collect(p.x, p.y);
+      this.drops.splice(i, 1);
+      EventBus.emit(GameEvents.ItemPickedUp, d.item);
+    }
   }
 
   private onPlayerDied() {
@@ -230,6 +288,7 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
       }
     }
 
+    this.updatePickup();
     this.drawHpBars();
   }
 

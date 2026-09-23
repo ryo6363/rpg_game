@@ -81,9 +81,9 @@ export class VirtualStick {
     const R = CONTROLS.stickRadius;
     const a = this.active ? 1 : 0.5;
     g.clear();
-    g.fillStyle(0x1a1c2c, 0.35 * a).fillCircle(this.baseX, this.baseY, R + 4);
-    g.lineStyle(1, 0xf4f4f4, 0.5 * a).strokeCircle(this.baseX, this.baseY, R + 4);
-    g.fillStyle(0xf4f4f4, 0.55 * a).fillCircle(this.knobX, this.knobY, 9);
-    g.lineStyle(1, 0x1a1c2c, 0.6 * a).strokeCircle(this.knobX, this.knobY, 9);
+    g.fillStyle(0x1a1c2c, 0.35 * a).fillCircle(this.baseX, this.baseY, R + 3);
+    g.lineStyle(1, 0xf4f4f4, 0.5 * a).strokeCircle(this.baseX, this.baseY, R + 3);
+    g.fillStyle(0xf4f4f4, 0.55 * a).fillCircle(this.knobX, this.knobY, 7);
+    g.lineStyle(1, 0x1a1c2c, 0.6 * a).strokeCircle(this.knobX, this.knobY, 7);
   }
 }

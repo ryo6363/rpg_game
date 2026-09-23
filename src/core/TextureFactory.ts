@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CHARACTER_SPRITES, EFFECT_SPRITES, PALETTE, TILE_PIXELS, type PixelFrame, type PixelSprite } from '../data/sprites';
+import { CHARACTER_SPRITES, EFFECT_SPRITES, ICON_SPRITES, PALETTE, TILE_PIXELS, type PixelFrame, type PixelSprite } from '../data/sprites';
 import { TILE_TYPES } from '../data/tiles';
 import { DISPLAY } from '../config/balance';
 
@@ -51,7 +51,7 @@ function buildSprite(scene: Phaser.Scene, s: PixelSprite) {
 }
 
 export function buildAllTextures(scene: Phaser.Scene) {
-  for (const s of [...CHARACTER_SPRITES, ...EFFECT_SPRITES]) buildSprite(scene, s);
+  for (const s of [...CHARACTER_SPRITES, ...EFFECT_SPRITES, ...ICON_SPRITES]) buildSprite(scene, s);
 
   const ts = DISPLAY.tileSize;
   buildStrip(

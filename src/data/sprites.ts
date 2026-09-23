@@ -49,33 +49,41 @@ const noise = (x: number, y: number, seed: number) =>
 
 // ---------------------------------------------------------------- キャラクター
 
-const WARRIOR_BODY = [
+// 主人公：オープンカーに乗った人（右向き）。X = 車体色、Z = 車体の影色
+const CAR_BODY = [
   '................',
-  '......kkkk......',
-  '.....ksssskk....',
-  '....ksswsssk....',
-  '....kssssssk....',
-  '....kffkfffk....',
+  '................',
+  '.....kkkk.......',
+  '....kuuuuk......',
+  '....kuffkfk.....',
   '....kfffffk.....',
-  '...kbbkkkbbk....',
-  '..kbbbbbbbbbk...',
-  '..kfkbbybbkfk...',
-  '..kkkbbbbbkkk...',
-  '....kbbbbbk.....',
-  '....kmmkmmk.....',
+  '.....kwwwk.ka...',
+  '..kkkkwwwkkka...',
+  '.kXXXXXXXXXXXXk.',
+  'kXXXXXXXXXXXXXyk',
+  'kZXXXXXXXXXXXXXk',
+  'kZZZZZZZZZZZZZZk',
 ];
+// 車輪は2コマで回転しているように見せる
+const CAR_WHEELS_A = ['..kmmsk...kmmsk.', '..kmssk...kmssk.', '...kkk.....kkk..', '................'];
+const CAR_WHEELS_B = ['..ksmmk...ksmmk.', '..kmmsk...kmmsk.', '...kkk.....kkk..', '................'];
 
-export const CHARACTER_SPRITES: PixelSprite[] = [
-  {
-    key: 'warrior',
+/** 車体色を差し替えた主人公スプライトを作る（ジョブごとに色違い） */
+const carSprite = (key: string, body: string, shade: string): PixelSprite => {
+  const paint = (rows: string[]) => rows.map((r) => r.replace(/X/g, body).replace(/Z/g, shade));
+  return {
+    key,
     width: 16,
     height: 16,
-    anims: [{ name: 'walk', frames: [0, 1], frameRate: 7 }],
-    frames: [
-      [...WARRIOR_BODY, '....kuk.kuk.....', '....kuk.kuuk....', '....kk...kk.....'],
-      [...WARRIOR_BODY, '...kuk...kuk....', '...kuuk..kk.....', '....kk..........'],
-    ],
-  },
+    anims: [{ name: 'move', frames: [0, 1], frameRate: 10 }],
+    frames: [paint([...CAR_BODY, ...CAR_WHEELS_A]), paint([...CAR_BODY, ...CAR_WHEELS_B])],
+  };
+};
+
+export const CHARACTER_SPRITES: PixelSprite[] = [
+  carSprite('car_warrior', 'r', 'p'),
+  carSprite('car_mage', 'b', 'n'),
+  carSprite('car_hunter', 'g', 't'),
   {
     key: 'slime',
     width: 16,
@@ -154,6 +162,185 @@ export const EFFECT_SPRITES: PixelSprite[] = [
     height: 4,
     frames: [['..kkkkkk..', '.kkkkkkkk.', '.kkkkkkkk.', '..kkkkkk..']],
   },
+  {
+    // ドロップの光の柱など。色は tint で付ける
+    key: 'fx_pixel',
+    width: 1,
+    height: 1,
+    frames: [['w']],
+  },
+  {
+    // レア以上のドロップの輪
+    key: 'fx_ring',
+    width: 16,
+    height: 16,
+    frames: [
+      (x, y) => {
+        const r = Math.hypot(x - 7.5, y - 7.5);
+        return r >= 6 && r < 7.5 ? 'w' : '.';
+      },
+    ],
+  },
+  {
+    // ドロップの足元の光（tint で色付け）
+    key: 'fx_glow',
+    width: 10,
+    height: 4,
+    frames: [['..wwwwww..', '.wwwwwwww.', '.wwwwwwww.', '..wwwwww..']],
+  },
+  {
+    key: 'shadow_wide',
+    width: 16,
+    height: 4,
+    frames: [['..kkkkkkkkkkkk..', '.kkkkkkkkkkkkkk.', '.kkkkkkkkkkkkkk.', '..kkkkkkkkkkkk..']],
+  },
+];
+
+// ---------------------------------------------------------------- アイコン（12x12）
+
+const icon = (key: string, rows: string[]): PixelSprite => ({ key, width: 12, height: 12, frames: [rows] });
+
+export const ICON_SPRITES: PixelSprite[] = [
+  icon('icon_bumper', [
+    '............',
+    '............',
+    '...s....s...',
+    '..ksk..ksk..',
+    '.kkskkkkskk.',
+    'kssssssssssk',
+    'kswwwwwwwwsk',
+    'ksmmmmmmmmsk',
+    'kkkkkkkkkkkk',
+    '............',
+    '............',
+    '............',
+  ]),
+  icon('icon_engine', [
+    '............',
+    '....kkkk....',
+    '...kppppk...',
+    '..kkkkkkkk..',
+    '.kmsmsmsmsk.',
+    '.kmaaaaaamk.',
+    '.kmacccaamk.',
+    '.kmaaaaaamk.',
+    '.kmsmsmsmsk.',
+    '..kkkkkkkk..',
+    '...kk..kk...',
+    '............',
+  ]),
+  icon('icon_turret', [
+    '............',
+    '.kk......kk.',
+    '..kuk..kuk..',
+    '...kuuuuk...',
+    '....kssk....',
+    '.....sw.....',
+    '.....sw.....',
+    '....kuuk....',
+    '....kuuk....',
+    '....kuuk....',
+    '.....kk.....',
+    '............',
+  ]),
+  icon('icon_helmet', [
+    '............',
+    '............',
+    '...kkkkkk...',
+    '..krrrrwrk..',
+    '.krrrrrrwrk.',
+    '.krrrrrrrrk.',
+    '.kaaaaarrrk.',
+    '.kaaaaarrrk.',
+    '.kkkkkkkkkk.',
+    '............',
+    '............',
+    '............',
+  ]),
+  icon('icon_armor', [
+    '............',
+    '..kk....kk..',
+    '.kssk..kssk.',
+    '.ksmskksmsk.',
+    '.kssssssssk.',
+    '.ksmssssmsk.',
+    '.kssssssssk.',
+    '.ksmssssmsk.',
+    '..kssssssk..',
+    '...kkkkkk...',
+    '............',
+    '............',
+  ]),
+  icon('icon_handle', [
+    '............',
+    '...kkkkkk...',
+    '..kddddddk..',
+    '.kdk....kdk.',
+    '.kd......dk.',
+    '.kdkkkkkkdk.',
+    '.kdkmssmkdk.',
+    '.kd..km..dk.',
+    '.kdk.km.kdk.',
+    '..kddddddk..',
+    '...kkkkkk...',
+    '............',
+  ]),
+  icon('icon_tire', [
+    '............',
+    '...kkkkkk...',
+    '..kdmdmdmk..',
+    '.kdkkkkkkdk.',
+    '.kmkswwskmk.',
+    '.kdksmmskdk.',
+    '.kmksmmskmk.',
+    '.kdkswwskdk.',
+    '.kmkkkkkkmk.',
+    '..kdmdmdmk..',
+    '...kkkkkk...',
+    '............',
+  ]),
+  icon('icon_charm', [
+    '............',
+    '.....kk.....',
+    '....kyyk....',
+    '...kkkkkk...',
+    '...krrrrk...',
+    '...kryyrk...',
+    '...krwwrk...',
+    '...krwwrk...',
+    '...kryyrk...',
+    '...krrrrk...',
+    '...kkkkkk...',
+    '............',
+  ]),
+  icon('icon_navi', [
+    '............',
+    '............',
+    '.kkkkkkkkkk.',
+    '.kddddddddk.',
+    '.kdccgcccdk.',
+    '.kdcgggccdk.',
+    '.kdccgcrcdk.',
+    '.kddddddddk.',
+    '.kkkkkkkkkk.',
+    '....kmmk....',
+    '...kkkkkk...',
+    '............',
+  ]),
+  icon('icon_bag', [
+    '............',
+    '....kkkk....',
+    '...ku..uk...',
+    '..kkkkkkkk..',
+    '.kuuuuuuuuk.',
+    '.kuQQQQQQuk.',
+    '.kuuuyyuuuk.',
+    '.kuuuyyuuuk.',
+    '.kuuuuuuuuk.',
+    '.kQuuuuuuQk.',
+    '..kkkkkkkk..',
+    '............',
+  ]),
 ];
 
 // ---------------------------------------------------------------- タイル（16x16）

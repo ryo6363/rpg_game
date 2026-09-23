@@ -4,7 +4,7 @@ import type { SkillDef } from '../core/types';
 export const SKILLS: Record<string, SkillDef> = {
   warrior_slash: {
     id: 'warrior_slash',
-    name: '斬撃',
+    name: 'バンパーアタック',
     kind: 'meleeArc',
     power: 1.0,
     cooldown: 0,

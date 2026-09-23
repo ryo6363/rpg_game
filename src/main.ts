@@ -3,6 +3,7 @@ import { EventBus, GameEvents } from './core/EventBus';
 import { updateViewport, viewport } from './core/Viewport';
 import { BootScene } from './scenes/BootScene';
 import { FieldScene } from './scenes/FieldScene';
+import { InventoryScene } from './scenes/InventoryScene';
 import { TitleScene } from './scenes/TitleScene';
 import { UIScene } from './scenes/UIScene';
 
@@ -44,7 +45,7 @@ const game = new Phaser.Game({
   physics: { default: 'arcade', arcade: { debug: false } },
   fps: { target: 60 },
   render: { powerPreference: 'high-performance', antialias: false },
-  scene: [BootScene, TitleScene, FieldScene, UIScene],
+  scene: [BootScene, TitleScene, FieldScene, UIScene, InventoryScene],
 });
 
 // ---- 画面サイズ変更（回転・アドレスバー表示切替など）

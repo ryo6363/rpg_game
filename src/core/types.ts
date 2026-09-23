@@ -1,7 +1,8 @@
 // 共通の型定義
 
 export type JobId = 'warrior' | 'mage' | 'hunter';
-export type WeaponType = 'sword' | 'staff' | 'bow';
+/** 武装の種類（戦士＝バンパー／魔法使い＝魔導エンジン／狩人＝ボウガン砲台） */
+export type WeaponType = 'bumper' | 'engine' | 'turret';
 
 /** 最終ステータス（ジョブ基礎＋Lv成長＋装備で算出） */
 export interface Stats {
@@ -42,6 +43,8 @@ export interface JobDef {
   id: JobId;
   name: string;
   weaponType: WeaponType;
+  /** 最初から装備している武装（data/itemBases.ts の id） */
+  starterWeapon: string;
   sprite: string;
   base: Stats;
   /** Lv1 から 1 上がるごとの増加量 */
@@ -71,6 +74,8 @@ export interface EnemyDef {
   /** 当たり判定の半径 */
   bodyRadius: number;
   exp: number;
+  /** ドロップ率の倍率（省略時 1） */
+  dropRate?: number;
 }
 
 /** フィールドのエリア定義 */
@@ -81,4 +86,55 @@ export interface AreaDef {
   level: number;
   maxEnemies: number;
   enemies: { id: string; weight: number }[];
+}
+
+// ---------------------------------------------------------------- 装備
+
+export type Rarity = 'normal' | 'magic' | 'rare' | 'legendary';
+/** 部位。表示名は data/slots.ts（武装／ヘルメット／装甲／ハンドル／タイヤ／お守り） */
+export type Slot = 'weapon' | 'head' | 'body' | 'hands' | 'feet' | 'accessory';
+export type ArmorSlot = Exclude<Slot, 'weapon'>;
+
+/** 装備のベース（種類）。data/itemBases.ts */
+export interface ItemBaseDef {
+  id: string;
+  name: string;
+  slot: Slot;
+  /** 武装のみ：装備できるジョブの武装種 */
+  weaponType?: WeaponType;
+  icon: string;
+  /** Lv1 時点の基本性能。アイテムレベルで伸びる */
+  stats: Partial<Stats>;
+  /** このアイテムレベル以上でドロップする */
+  minLevel: number;
+}
+
+/** 追加効果の定義。data/affixes.ts */
+export interface AffixDef {
+  id: string;
+  stat: StatKey;
+  /** flat: 足し算 / percent: 掛け算（+x%） */
+  mode: 'flat' | 'percent';
+  /** アイテムレベル1での値の範囲と、1レベルごとの上昇 */
+  min: number;
+  max: number;
+  perLevel: number;
+  slots: Slot[];
+  weight: number;
+  /** マジック品の名前に付く接頭語 */
+  prefix: string;
+}
+
+/** 実際に手に入る装備 */
+export interface ItemInstance {
+  uid: string;
+  baseId: string;
+  rarity: Rarity;
+  itemLevel: number;
+  name: string;
+  /** 基本性能（生成時に確定） */
+  stats: Partial<Stats>;
+  affixes: { id: string; value: number }[];
+  /** 強化値（ステップ3） */
+  upgrade: number;
 }

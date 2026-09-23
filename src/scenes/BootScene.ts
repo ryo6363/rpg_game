@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { buildAllTextures, createAnimations } from '../core/TextureFactory';
+import { SaveManager } from '../core/SaveManager';
 
 /** テクスチャ生成・フォント読み込み */
 export class BootScene extends Phaser.Scene {
@@ -10,6 +11,7 @@ export class BootScene extends Phaser.Scene {
   create() {
     buildAllTextures(this);
     createAnimations(this);
+    SaveManager.load();
 
     // ドットフォントの読み込みを待つ（オフライン等で失敗しても先へ進む）
     const fontReady = document.fonts

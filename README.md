@@ -1,4 +1,4 @@
-# ドットクエスト
+# フィットクエスト
 
 スマホ縦持ち向けのドット絵ハクスラ ARPG（Vite + TypeScript + Phaser 3）。
 
@@ -20,7 +20,7 @@ npm run dev
 | 移動 | 画面左下を触ってドラッグ（仮想スティック） | WASD / 矢印キー |
 | 通常攻撃 | 右下「攻撃」を押しっぱなし（最寄りの敵へ自動で向く） | J / Space |
 | スキル | 右下 1〜3 | 1 / 2 / 3 |
-| インベントリ | （ステップ2で追加） | I |
+| 持ち物・装備 | 右上のカバンボタン | I（閉じるのは I / Esc） |
 
 ## ビルド
 
@@ -60,5 +60,7 @@ src/
 
 - **敵を増やす**: `data/sprites.ts` に見た目、`data/enemies.ts` に定義を追加し、`data/areas.ts` の `enemies` に登録
 - **新しい敵の動き**: `systems/EnemyAI.ts` に関数を追加して `ENEMY_AI` に登録
+- **装備の種類を増やす**: `data/itemBases.ts` に追加（アイコンは `data/sprites.ts` の ICON_SPRITES）
+- **追加効果を増やす**: `data/affixes.ts` に追加。ドロップ率・レアリティ確率などは `config/balance.ts` の LOOT
 - **スキルを増やす**: `data/skills.ts` に定義。新しい種類（弾・範囲など）は `systems/SkillRunner.ts` に処理を追加
 - **マップ**: `data/maps.ts` に文字列で描く（文字の意味は `data/tiles.ts`）
