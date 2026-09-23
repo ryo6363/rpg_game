@@ -8,6 +8,7 @@ import { updateViewport, viewport } from './core/Viewport';
 import { BootScene } from './scenes/BootScene';
 import { FieldScene } from './scenes/FieldScene';
 import { ChapterClearScene } from './scenes/ChapterClearScene';
+import { DebugScene } from './scenes/DebugScene';
 import { DialogScene } from './scenes/DialogScene';
 import { InventoryScene } from './scenes/InventoryScene';
 import { JobSelectScene } from './scenes/JobSelectScene';
@@ -69,6 +70,7 @@ const game = new Phaser.Game({
     JobSelectScene,
     DialogScene,
     ChapterClearScene,
+    DebugScene,
   ],
 });
 

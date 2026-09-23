@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CONTROLS, DISPLAY, EXP } from '../config/balance';
+import { DebugState } from '../core/DebugState';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { HudState } from '../core/HudState';
@@ -55,6 +56,7 @@ export class UIScene extends Phaser.Scene {
     this.expBar = this.add.graphics().setPosition(hudX, hudY + 21);
     this.drawLevel();
     if (DISPLAY.showFps) this.fpsText = createText(this, W - safe.right - 4, hudY, '', 6, '#94b0c2').setOrigin(1, 0);
+    if (DebugState.invincible) createText(this, hudX + 70, hudY + 1, '無敵', 6, '#ef7d57');
 
     // 持ち物ボタン（右上）
     this.bagButton = { x: W - safe.right - 14, y: hudY + 18, r: 11 };

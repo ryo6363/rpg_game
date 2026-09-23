@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PLAYER } from '../config/balance';
+import { DebugState } from '../core/DebugState';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { HudState } from '../core/HudState';
@@ -306,6 +307,7 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
 
   damagePlayer(rawAtk: number, fromX: number, fromY: number, dot = false) {
     const p = this.player;
+    if (DebugState.invincible) return;
     if (dot ? p.dead : p.isInvulnerable) return;
     const res = rollDamage({ atk: rawAtk, critRate: 0, critDamage: 0 }, 1, p.stats.def);
     const died = p.applyDamage(res.amount, dot);

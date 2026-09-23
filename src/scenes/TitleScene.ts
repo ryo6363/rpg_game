@@ -35,8 +35,37 @@ export class TitleScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off(GameEvents.ViewportChanged, layout));
 
     // 今の章の拠点から始める
-    const start = () => this.scene.start('Town', { areaId: CHAPTERS[gameState.story.chapter]?.startArea ?? 'town' });
-    this.input.once('pointerup', start);
-    this.input.keyboard?.once('keydown', start);
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      this.scene.start('Town', { areaId: CHAPTERS[gameState.story.chapter]?.startArea ?? 'town' });
+    };
+
+    // ---- 隠しデバッグメニュー
+    // ロゴ（FIT QUEST）を3秒以内に5回タップ、またはキーボードで D・E・B・U・G と打つと開く。
+    // ロゴへのタップはゲーム開始にしない（それ以外の場所のタップで開始）
+    const logoArea = () => {
+      const cx = viewport.width / 2;
+      const cy = viewport.height / 2 - 64;
+      return new Phaser.Geom.Rectangle(cx - 50, cy - 14, 100, 28);
+    };
+    let taps: number[] = [];
+    this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      const x = p.x / viewport.zoom;
+      const y = p.y / viewport.zoom;
+      if (!logoArea().contains(x, y)) return start();
+      const now = this.time.now;
+      taps = [...taps.filter((t) => now - t < 3000), now];
+      if (taps.length >= 5) this.scene.start('Debug');
+    });
+    const secret = 'DEBUG';
+    let typed = '';
+    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
+      const k = e.key.toUpperCase();
+      if (!secret.includes(k)) return start();
+      typed = (typed + k).slice(-secret.length);
+      if (typed === secret) this.scene.start('Debug');
+    });
   }
 }
