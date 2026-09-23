@@ -973,6 +973,321 @@ EFFECT_SPRITES.push(
   },
 );
 
+// ---------------------------------------------------------------- 第4章 終焉王国
+
+const DRAGON_KNIGHT = [
+  '........................',
+  '...........kkk..........',
+  '..........kdddk.........',
+  '..........kdrrk.........',
+  'k.........kdddk.......k.',
+  'kk.......kkyyykk.....kk.',
+  'kpk.....kdddddddk...kpk.',
+  'kppk...kdddyyydddk.kppk.',
+  '.kppkkkddyddddyddkkppk..',
+  '..kppppkddddddddkppppk..',
+  '...kpppkddddddddkpppk...',
+  '....kkkkdddyydddkkkk....',
+  '.......kdddddddddk......',
+  '.......kkdddkdddkk......',
+  '........kddk.kddk.......',
+  '........kddk.kddk.......',
+  '........kyyk.kyyk.......',
+  '........kkkk.kkkk.......',
+  '........................',
+  '........................',
+];
+/** 竜騎士の槍（右上へ向ける） */
+const withLance = (rows: string[]): PixelGen => (x, y) => {
+  const lance = [
+    [17, 9, 'u'],
+    [18, 8, 'u'],
+    [19, 7, 'u'],
+    [20, 6, 's'],
+    [21, 5, 'w'],
+    [22, 4, 'w'],
+    [23, 3, 'w'],
+  ] as const;
+  for (const [lx, ly, c] of lance) if (lx === x && ly === y) return c;
+  return rows[y]?.[x] ?? '.';
+};
+
+const CHRONOS_BODY = [
+  '................................',
+  '................................',
+  '..............y.y.y.............',
+  '.............kyyyyyk............',
+  '.............kdddddk............',
+  '.............kdEdEdk............',
+  '.............kdddddk............',
+  '..............kdddk.............',
+  '.........kkkkkyyyyykkkkk........',
+  '........kddyydddddddyyddk.......',
+  '.......kdddkyddddddyykdddk......',
+  '.......kddk.kddyyddk..kddk......',
+  '......kaak..kdddddddk..kddk.....',
+  '.....kavvak.kdyyyydk....kddk....',
+  '.....kaavak.kdddddddk....kyyk...',
+  '......kaak..kddddddk.....kyyk...',
+  '.......kk...kyyyyyyk......kk....',
+  '...........krrrrrrrrk...........',
+  '..........krrrrdrrrrrk..........',
+  '..........krrrdddrrrrk..........',
+  '...........kkdddkdddkk..........',
+  '............kdddkdddk...........',
+  '............kdddkdddk...........',
+  '............kyydkdyyk...........',
+  '............kdddkdddk...........',
+  '...........kddddkddddk..........',
+  '...........kkkkkkkkkkk..........',
+];
+/**
+ * 第4章ボス「輪廻王クロノス」（右向き・32x32）。
+ * 背中に巨大な時計盤、右手に大剣、左腕に時間を操る魔導装置（水色）。phase で針の角度と目の光が変わる
+ */
+const chronosFrame = (phase: number): PixelGen => (x, y) => {
+  const by = y - 3;
+  const row = CHRONOS_BODY[by];
+  let ch = row?.[x] ?? '.';
+  if (ch === 'E') ch = phase ? 'w' : 'a';
+  if (ch !== '.') return ch;
+  // 大剣（刃は右手の上）
+  if (by >= -2 && by <= 12 && (x === 26 || x === 27)) return by <= -2 ? 'k' : x === 26 ? 's' : 'w';
+  if (by === 13 && x >= 24 && x <= 29) return x === 24 || x === 29 ? 'k' : 'y';
+  // 背中の時計盤
+  const cx = 16;
+  const cy = 13;
+  const r = Math.hypot(x - cx, y - cy);
+  if (r > 12.5) return '.';
+  if (r > 11.4) return 'k';
+  if (r > 10) return 'y';
+  // 目盛り
+  const ang = Math.atan2(y - cy, x - cx);
+  const tick = Math.abs(((ang / (Math.PI / 6)) % 1) + 1) % 1;
+  if (r > 8.5 && (tick < 0.12 || tick > 0.88)) return 'y';
+  // 針
+  const hand = phase ? -0.6 : -2.2;
+  const along = (x - cx) * Math.cos(hand) + (y - cy) * Math.sin(hand);
+  const across = Math.abs(-(x - cx) * Math.sin(hand) + (y - cy) * Math.cos(hand));
+  if (along > 0 && along < 9 && across < 0.8) return 'y';
+  return r < 1.5 ? 'y' : 'n';
+};
+
+const DEMON_CAR_TOP = [
+  '................',
+  '................',
+  '.....k...k......',
+  '.....rk.kr......',
+  '.....krrrk......',
+  '.....kryrk.ka...',
+  '..kkkkrrrkkka...',
+];
+const demonCar = (base: string[]) => recolorCar([...DEMON_CAR_TOP, ...base.slice(7)], 'p', 'd', 'r').map((r) => r.padEnd(16, '.'));
+
+CHARACTER_SPRITES.push(
+  personSprite('npc_guard', 'd', 'Y', 'd'),
+  personSprite('npc_scholar', 's', 'p', 'd'),
+  personSprite('npc_lady', 'y', 'r', 'd'),
+  personSprite('npc_kid', 'u', 'g', 'd'),
+  {
+    key: 'fallen_soldier',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 4 }],
+    frames: [
+      fit(recolor([...SOLDIER, '....kmk.kmk.....', '....kdk.kdk.....', '...kkk..kkk.....', '', ''], { m: 'V', n: 'r', g: 'y', b: 'r' }), 16),
+      fit(recolor([...SOLDIER, '...kmk..kmk.....', '...kdk..kdk.....', '..kkk...kkk.....', '', ''], { m: 'V', n: 'r', g: 'y', b: 'r' }), 16),
+    ],
+  },
+  {
+    key: 'black_knight',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: [
+      fit(recolor([...SOLDIER, '....kmk.kmk.....', '....kdk.kdk.....', '...kkk..kkk.....', '', ''], { m: 'd', g: 'y', n: 'r', s: 'w', b: 'y' }), 16),
+      fit(recolor([...SOLDIER, '...kmk..kmk.....', '...kdk..kdk.....', '..kkk...kkk.....', '', ''], { m: 'd', g: 'y', n: 'r', s: 'w', b: 'y' }), 16),
+    ],
+  },
+  {
+    // レアモンスター「輪廻の騎士」：紫の鎧、水色に光る目
+    key: 'rinne_knight',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 4 }],
+    frames: [
+      fit(recolor([...SOLDIER, '....kmk.kmk.....', '....kdk.kdk.....', '...kkk..kkk.....', '', ''], { m: 'p', g: 'y', n: 'a', s: 'v', b: 'v' }), 16),
+      fit(recolor([...SOLDIER, '...kmk..kmk.....', '...kdk..kdk.....', '..kkk...kkk.....', '', ''], { m: 'p', g: 'y', n: 'a', s: 'v', b: 'v' }), 16),
+    ],
+  },
+  {
+    // 王国の魔導兵：黒いローブに金の紋章
+    key: 'kingdom_mage',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: [
+      fit(recolor(MAGE_SOLDIER, { p: 'd', v: 'y' }), 16),
+      fit(recolor(MAGE_SOLDIER.map((r, i) => (i === 3 ? r.replace('y', 'a') : r)), { p: 'd', v: 'y' }), 16),
+    ],
+  },
+  {
+    key: 'nightmare_hound',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 8 }],
+    frames: [
+      fit(recolor([...WOLF_TOP, '..kdk.....kdk...', '..kdk.....kdk...', '..kk......kk....', '................'], { m: 'd', s: 'p', d: 'n' }), 16),
+      fit(recolor([...WOLF_TOP, '...kdk...kdk....', '...kdk...kdk....', '....kk....kk....', '................'], { m: 'd', s: 'p', d: 'n' }), 16),
+    ],
+  },
+  {
+    // 魔物が運転する暴走車
+    key: 'demons_rider',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 12 }],
+    frames: [demonCar(EMPTY_CAR_A), demonCar(EMPTY_CAR_B)],
+  },
+  {
+    key: 'dragon_knight',
+    width: 24,
+    height: 20,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 4 }],
+    frames: [withLance(DRAGON_KNIGHT), withLance(['', ...DRAGON_KNIGHT.slice(0, 19)].map((r) => r.padEnd(24, '.')))],
+  },
+  {
+    key: 'chronos',
+    width: 32,
+    height: 32,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 2 }],
+    frames: [chronosFrame(0), chronosFrame(1)],
+  },
+  {
+    // 倒れかけた兵士の像
+    key: 'soldier_statue',
+    width: 16,
+    height: 16,
+    frames: [
+      [
+        '................',
+        '......kkk.......',
+        '.....kssmk......',
+        '.....kmsmk......',
+        '......kmk...k...',
+        '....kkssskkksk..',
+        '...ksmsssmsksk..',
+        '...ksmsssmmksk..',
+        '...kmkssskmkk...',
+        '....kksssmk.....',
+        '.....ksmsmk.....',
+        '.....kmk.kmk....',
+        '...kkkkkkkkkkk..',
+        '..kVVVVVVVVVVVk.',
+        '..kYYYYYYYYYYYk.',
+        '..kkkkkkkkkkkkk.',
+      ],
+    ],
+  },
+  {
+    // 古い記録（石板）
+    key: 'record_stone',
+    width: 16,
+    height: 16,
+    frames: [
+      [
+        '................',
+        '....kkkkkkkk....',
+        '...kVVVVVVVVk...',
+        '...kVkkVkVVVk...',
+        '...kVVVVVVVVk...',
+        '...kVkVkkkVVk...',
+        '...kVVVVVVVVk...',
+        '...kVkkkVkkVk...',
+        '...kVVVVVVVVk...',
+        '...kVkVVkkkVk...',
+        '...kVVVVVVVVk...',
+        '...kYYYYYYYYk...',
+        '..kkkkkkkkkkkk..',
+        '..kYYYYYYYYYYk..',
+        '..kkkkkkkkkkkk..',
+        '................',
+      ],
+    ],
+  },
+  {
+    // 記憶の結晶をかざす祭壇（光がゆらぐ）
+    key: 'crystal_altar',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 2 }],
+    frames: [
+      [
+        '................',
+        '.......kk.......',
+        '......kawk......',
+        '.....kawwak.....',
+        '.....kcaaak.....',
+        '......kcak......',
+        '.......kk.......',
+        '....kkkkkkkk....',
+        '...kyyyyyyyyk...',
+        '....kVVVVVVk....',
+        '....kVYYYYVk....',
+        '....kVVVVVVk....',
+        '....kVYYYYVk....',
+        '...kkkkkkkkkk...',
+        '..kVVVVVVVVVVk..',
+        '..kkkkkkkkkkkk..',
+      ],
+      [
+        '................',
+        '.......kk.......',
+        '......kwwk......',
+        '.....kwwwak.....',
+        '.....kawwak.....',
+        '......kaak......',
+        '.......kk.......',
+        '....kkkkkkkk....',
+        '...kyyyyyyyyk...',
+        '....kVVVVVVk....',
+        '....kVYYYYVk....',
+        '....kVVVVVVk....',
+        '....kVYYYYVk....',
+        '...kkkkkkkkkk...',
+        '..kVVVVVVVVVVk..',
+        '..kkkkkkkkkkkk..',
+      ],
+    ],
+  },
+  {
+    // 道の終わりの柵（世界の果て）
+    key: 'road_end',
+    width: 16,
+    height: 16,
+    frames: [
+      [
+        '................',
+        '................',
+        '................',
+        '................',
+        '.kkkkkkkkkkkkkk.',
+        '.kwwrrwwrrwwrrk.',
+        '.krrwwrrwwrrwwk.',
+        '.kkkkkkkkkkkkkk.',
+        '..kmk......kmk..',
+        '..kmk......kmk..',
+        '..kmk......kmk..',
+        '..kmk......kmk..',
+        '.kkkkk....kkkkk.',
+        '................',
+        '................',
+        '................',
+      ],
+    ],
+  },
+);
+
 // ---------------------------------------------------------------- アイコン（12x12）
 
 const icon = (key: string, rows: string[]): PixelSprite => ({ key, width: 12, height: 12, frames: [rows] });
@@ -1130,6 +1445,34 @@ export const ICON_SPRITES: PixelSprite[] = [
     '...kccaak...',
     '....kcak....',
     '.....kk.....',
+    '............',
+  ]),
+  icon('icon_shard', [
+    '............',
+    '.....kk.....',
+    '....kvyk....',
+    '...kvvyyk...',
+    '..kpvvyyyk..',
+    '..kpvvywyk..',
+    '...kpvyyk...',
+    '....kpvk....',
+    '.....kk.....',
+    '............',
+    '............',
+    '............',
+  ]),
+  icon('icon_status', [
+    '............',
+    '........kkk.',
+    '........kyk.',
+    '....kkk.kyk.',
+    '....kok.kyk.',
+    'kkk.kok.kyk.',
+    'klk.kok.kyk.',
+    'klk.kok.kyk.',
+    'klk.kok.kyk.',
+    'kkkkkkkkkkk.',
+    '............',
     '............',
   ]),
   icon('icon_bag', [
@@ -1328,6 +1671,42 @@ export const TILE_PIXELS: Record<string, PixelFrame> = {
     return noise(x, y, 74) < 12 ? 'n' : 'm';
   },
   pier: (x, y) => (y % 4 === 3 ? 'B' : noise(x, y, 75) < 8 ? 'Q' : 'u'),
+  // ---- 城塞都市・終焉王国
+  royal_stone: (x, y) => {
+    const off = Math.floor(y / 8) % 2 ? 4 : 0;
+    if (y % 8 === 7 || (x + off) % 8 === 7) return 'Y';
+    const n = noise(x, y, 81);
+    if (n < 6) return 'Y';
+    if (n < 12) return 'E';
+    return 'V';
+  },
+  castle_wall: (x, y) => {
+    if (y === 0) return 's';
+    const off = Math.floor(y / 4) % 2 ? 4 : 0;
+    if (y % 4 === 3 || (x + off) % 8 === 7) return 'd';
+    const n = noise(x, y, 82);
+    if (n < 8) return 'G';
+    if (n < 20) return 's';
+    return 'm';
+  },
+  pillar: (x, y) => {
+    if (x < 4 || x > 11) {
+      const off = Math.floor(y / 8) % 2 ? 4 : 0;
+      return y % 8 === 7 || (x + off) % 8 === 7 ? 'Y' : 'V';
+    }
+    if (x === 4 || x === 11) return 'k';
+    if (y < 2 || y > 13) return 'y';
+    return x < 7 ? 's' : x < 10 ? 'm' : 'd';
+  },
+  // 並べると1枚の絨毯に見えるよう、ふちは描かない（ひし形の模様だけ）
+  carpet: (x, y) => {
+    if ((x + y) % 8 === 0 || (x - y + 16) % 8 === 0) return (x + y) % 16 === 0 ? 'y' : 'p';
+    return noise(x, y, 84) < 6 ? 'p' : 'r';
+  },
+  void: (x, y) => {
+    const n = noise(x, y, 83);
+    return n < 1 ? 's' : n < 3 ? 'n' : 'k';
+  },
   water: (x, y) => {
     const wave = (x + Math.floor(y / 4) * 5) % 8;
     if (y % 4 === 1 && wave < 3) return 'a';

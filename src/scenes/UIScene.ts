@@ -14,6 +14,7 @@ import { expToNext } from '../systems/Progression';
 import { OVERLAY_OPEN_KEY, openOverlay } from '../ui/overlay';
 import { applyColor, rarityTextColor } from '../ui/rarityStyle';
 import { createText } from '../ui/text';
+import { statPointsOf } from '../systems/StatPoints';
 
 /** HUD と操作系。フィールドの上に常に重ねて表示する */
 export class UIScene extends Phaser.Scene {
@@ -26,11 +27,21 @@ export class UIScene extends Phaser.Scene {
   private levelText!: Phaser.GameObjects.Text;
   private expBar!: Phaser.GameObjects.Graphics;
   private bagButton = { x: 0, y: 0, r: 0 };
+  private statusButton = { x: 0, y: 0, r: 0 };
+  private pointBadge!: Phaser.GameObjects.Container;
+  private pointBadgeText!: Phaser.GameObjects.Text;
+  private shownPoints = -1;
   private toasts: Phaser.GameObjects.Text[] = [];
   private toastY = 0;
   private bossName!: Phaser.GameObjects.Text;
   private bossBar!: Phaser.GameObjects.Graphics;
   private bossBarWidth = 0;
+  /** ボスの技の名前（HP バーの上・右寄せ） */
+  private bossAttack!: Phaser.GameObjects.Text;
+  private shownAttack: string | null = null;
+  private bossAttackBand!: Phaser.GameObjects.Graphics;
+  /** 技が終わってから名前を消すまでの残り時間（連続攻撃の合間でちらつかないように） */
+  private attackHold = 0;
   private fpsText?: Phaser.GameObjects.Text;
   /** 再起動（画面サイズ変更）後も表示を保つため static */
   private static hp = { cur: 1, max: 1 };
@@ -62,12 +73,29 @@ export class UIScene extends Phaser.Scene {
     this.bagButton = { x: W - safe.right - 14, y: hudY + 18, r: 11 };
     this.add.circle(this.bagButton.x, this.bagButton.y, 10, 0x1a1c2c, 0.6).setStrokeStyle(1, 0xf4f4f4, 0.6);
     this.add.image(this.bagButton.x, this.bagButton.y, 'icon_bag', 0);
-    this.toastY = hudY + 50;
+    // ステータスボタン（持ち物ボタンの左）
+    this.statusButton = { x: this.bagButton.x - 25, y: this.bagButton.y, r: 11 };
+    this.add.circle(this.statusButton.x, this.statusButton.y, 10, 0x1a1c2c, 0.6).setStrokeStyle(1, 0xf4f4f4, 0.6);
+    this.add.image(this.statusButton.x, this.statusButton.y, 'icon_status', 0);
+    // 未使用のステータスポイントがあるときの目印（ステータスボタンの右上）
+    this.pointBadge = this.add.container(this.statusButton.x + 8, this.statusButton.y - 8).setVisible(false);
+    this.pointBadge.add(this.add.circle(0, 0, 5, 0xffd23f, 1).setStrokeStyle(1, 0x1a1c2c, 1));
+    this.pointBadgeText = createText(this, 0, 0, '', 6, '#1a1c2c').setOrigin(0.5);
+    this.pointBadge.add(this.pointBadgeText);
+    this.shownPoints = -1;
+    // ボス戦の技の名前と重ならない高さ
+    this.toastY = hudY + 64;
 
     // ボスの HP バー（ボス戦のときだけ）
     this.bossName = createText(this, hudX, hudY + 29, '', 6, '#ffd23f', { stroke: '#1a1c2c', strokeThickness: 2 });
     this.bossBar = this.add.graphics().setPosition(hudX, hudY + 38);
     this.bossBarWidth = W - safe.left - safe.right - 12;
+    // 技の名前：HP バーのすぐ下、中央に帯つきで
+    this.bossAttackBand = this.add.graphics().setVisible(false);
+    this.bossAttack = createText(this, hudX + this.bossBarWidth / 2, hudY + 51, '', 8, '#ffffff', { stroke: '#1a1c2c', strokeThickness: 3 })
+      .setOrigin(0.5)
+      .setVisible(false);
+    this.shownAttack = null;
 
     // ---- 操作系
     const bottom = H - safe.bottom;
@@ -97,6 +125,11 @@ export class UIScene extends Phaser.Scene {
         this.openInventory();
         return;
       }
+      const st = this.statusButton;
+      if (Math.hypot(x - st.x, y - st.y) <= st.r * 1.2) {
+        openOverlay(this, 'Status');
+        return;
+      }
       const hit = this.buttons.hitTest(x, y);
       if (hit >= 0) {
         this.buttons.press(p.id, hit);
@@ -123,11 +156,12 @@ export class UIScene extends Phaser.Scene {
 
     // ---- キーボード（PC確認用）
     const kb = this.input.keyboard!;
-    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,SPACE,ONE,TWO,THREE,I') as Record<
+    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,SPACE,ONE,TWO,THREE,I,C') as Record<
       string,
       Phaser.Input.Keyboard.Key
     >;
     this.keys.I.on('down', () => this.openInventory());
+    this.keys.C.on('down', () => openOverlay(this, 'Status'));
     (['ONE', 'TWO', 'THREE'] as const).forEach((k, i) =>
       this.keys[k].on('down', () => {
         if (!this.buttons.buttons[this.skillIndices[i]].locked) InputState.skillQueue.push(i);
@@ -240,10 +274,11 @@ export class UIScene extends Phaser.Scene {
     });
   }
 
-  private drawBossBar() {
+  private drawBossBar(dt: number) {
     const b = HudState.boss;
     this.bossName.setVisible(!!b);
     this.bossBar.clear();
+    this.updateBossAttack(b?.attack ?? null, dt);
     if (!b) return;
     this.bossName.setText(b.name);
     const w = this.bossBarWidth;
@@ -257,6 +292,52 @@ export class UIScene extends Phaser.Scene {
       .fillRect(0, 0, Math.round(w * ratio), 4)
       .fillStyle(0xef7d57, 1)
       .fillRect(0, 0, Math.round(w * ratio), 1);
+    // 50%・20% の目印（上下にはみ出す白い線と、小さな三角）
+    for (const mark of [0.5, 0.2]) {
+      const mx = Math.round(w * mark);
+      this.bossBar.fillStyle(0xf4f4f4, 1).fillRect(mx, -2, 1, 8);
+      this.bossBar.fillTriangle(mx - 2, -4, mx + 3, -4, mx + 0.5, -1);
+    }
+  }
+
+  /** 技の名前：新しい技が始まったら出して少し弾ませ、終わったら少し残してから消す */
+  private updateBossAttack(attack: string | null, dt: number) {
+    const t = this.bossAttack;
+    if (attack) {
+      this.attackHold = 0.6;
+      if (attack !== this.shownAttack) {
+        this.shownAttack = attack;
+        this.tweens.killTweensOf(t);
+        t.setText(`《${attack}》`).setVisible(true).setAlpha(1).setScale(1.3);
+        this.tweens.add({ targets: t, scale: 1, duration: 180, ease: 'Back.easeOut' });
+        // 文字の後ろの帯
+        const bw = t.width + 16;
+        this.tweens.killTweensOf(this.bossAttackBand);
+        this.bossAttackBand
+          .clear()
+          .fillStyle(0xb13e53, 0.85)
+          .fillRect(t.x - bw / 2, t.y - 6, bw, 12)
+          .fillStyle(0xffd23f, 1)
+          .fillRect(t.x - bw / 2, t.y - 6, bw, 1)
+          .fillRect(t.x - bw / 2, t.y + 5, bw, 1)
+          .setVisible(true)
+          .setAlpha(1);
+      }
+      return;
+    }
+    if (!this.shownAttack) return;
+    this.attackHold -= dt;
+    if (this.attackHold > 0) return;
+    this.shownAttack = null;
+    this.tweens.add({
+      targets: [t, this.bossAttackBand],
+      alpha: 0,
+      duration: 250,
+      onComplete: () => {
+        t.setVisible(false);
+        this.bossAttackBand.setVisible(false);
+      },
+    });
   }
 
   private drawHp() {
@@ -273,7 +354,7 @@ export class UIScene extends Phaser.Scene {
     this.hpText.setText(`${Math.ceil(UIScene.hp.cur)}/${UIScene.hp.max}`);
   }
 
-  update() {
+  update(_time: number, deltaMs: number) {
     const k = this.keys;
     let kx = 0;
     let ky = 0;
@@ -292,7 +373,13 @@ export class UIScene extends Phaser.Scene {
     InputState.attackHeld = this.buttons.isHeld(this.attackIndex) || k.J.isDown || k.SPACE.isDown;
 
     this.syncSkillButtons();
-    this.drawBossBar();
+    this.drawBossBar(Math.min(deltaMs, 50) / 1000);
+    const pts = statPointsOf().statPoints;
+    if (pts !== this.shownPoints) {
+      this.shownPoints = pts;
+      this.pointBadge.setVisible(pts > 0);
+      this.pointBadgeText.setText(pts > 9 ? '9+' : String(pts));
+    }
     this.buttons.draw();
     if (this.fpsText) this.fpsText.setText(`${Math.round(this.game.loop.actualFps)}fps`);
   }

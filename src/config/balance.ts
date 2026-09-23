@@ -60,6 +60,26 @@ export const ENEMY = {
   respawnDelay: 4,
   /** プレイヤーからこれ以上離れた位置に再出現させる */
   respawnMinDistance: 140,
+  /** 雑魚が攻撃を終えてから、次の攻撃を始められるまでの秒数（この値〜1.5倍のあいだでばらつく） */
+  attackCooldown: 1.4,
+} as const;
+
+/** ステータスポイント（ジョブごと）。Lv1 で initial、レベルが1上がるごとに perLevel もらえる */
+export const STAT_POINTS = {
+  initial: 1,
+  perLevel: 1,
+} as const;
+
+/**
+ * ステータスポイント1点あたりの上昇量。
+ * attack / defense / speed / hp は割合（0.02 = +2%）、crit は会心率にそのまま足す（0.005 = +0.5%）
+ */
+export const STAT_POINT_VALUES = {
+  attack: 0.02,
+  defense: 0.02,
+  speed: 0.015,
+  hp: 0.03,
+  crit: 0.005,
 } as const;
 
 /** 経験値・レベル */
@@ -145,6 +165,13 @@ export const LOOP = {
   levelPerLoop: 10,
   /** 1周ごとのレア以上の出やすさの上昇（1周目 1倍、2周目 1.25倍 …） */
   rarityBonusPerLoop: 0.25,
+  /**
+   * フィールドの敵の数の倍率（エリアの maxEnemies に掛ける）。
+   * 1周目は少なめ、2周目から1周ごとに増え、上限で止まる
+   */
+  enemyCountFirst: 0.6,
+  enemyCountPerLoop: 0.15,
+  enemyCountMax: 1.2,
 } as const;
 
 /** 会話 */

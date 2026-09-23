@@ -2,16 +2,17 @@ import Phaser from 'phaser';
 import { BOSS, ENEMY, LOOT } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { HudState } from '../core/HudState';
-import type { ItemInstance, Rarity } from '../core/types';
+import type { BossPatternDef, ItemInstance, Rarity } from '../core/types';
 import { ENEMIES } from '../data/enemies';
+import { ITEM_BASES } from '../data/itemBases';
 import { Enemy } from '../entities/Enemy';
 import { LootDrop } from '../entities/LootDrop';
 import { rollDamage } from '../systems/Combat';
 import { addToInventory } from '../systems/Equipment';
-import { weightedPick } from '../systems/Items';
+import { createItem, weightedPick } from '../systems/Items';
 import { createRandomItem, rollDrop } from '../systems/LootGenerator';
 import { gainExp, killExp } from '../systems/Progression';
-import { enemyLevel, hasFlag, rarityBonus, setFlag } from '../systems/Story';
+import { enemyCountMultiplier, enemyLevel, hasFlag, rarityBonus, setFlag } from '../systems/Story';
 import { RAINBOW } from '../ui/rarityStyle';
 import { WorldScene, type WorldData } from './WorldScene';
 
@@ -43,7 +44,9 @@ export class FieldScene extends WorldScene {
     this.createWorld();
 
     this.enemyGroup = this.physics.add.group();
-    for (let i = 0; i < this.area.maxEnemies; i++) {
+    // 同時に出る敵の数（周回で増える）
+    const count = this.area.maxEnemies > 0 ? Math.max(1, Math.round(this.area.maxEnemies * enemyCountMultiplier())) : 0;
+    for (let i = 0; i < count; i++) {
       const e = new Enemy(this);
       this.enemies.push(e);
       this.enemyGroup.add(e);
@@ -51,7 +54,7 @@ export class FieldScene extends WorldScene {
     this.physics.add.collider(this.enemyGroup, this.map.layer);
     this.physics.add.collider(this.enemyGroup, this.enemyGroup);
     this.physics.add.collider(this.player, this.enemyGroup);
-    for (let i = 0; i < this.area.maxEnemies; i++) this.spawnEnemy(true);
+    for (let i = 0; i < count; i++) this.spawnEnemy(true);
     this.spawnBoss();
 
     this.hpBars = this.add.graphics().setDepth(99999);
@@ -86,6 +89,19 @@ export class FieldScene extends WorldScene {
     const pick = weightedPick(this.area.enemies, (en) => en.weight)!;
     const def = ENEMIES[pick.id];
     e.spawn(def, pos.x, pos.y, enemyLevel(this.area.level));
+    // 群れで出る敵は、近くに仲間も出す
+    if (def.pack) {
+      const n = def.pack.min + Math.floor(Math.random() * (def.pack.max - def.pack.min + 1)) - 1;
+      for (let i = 0; i < n; i++) {
+        const mate = this.enemies.find((en) => !en.active);
+        if (!mate) break;
+        const a = Math.random() * Math.PI * 2;
+        const x = pos.x + Math.cos(a) * 18;
+        const y = pos.y + Math.sin(a) * 18;
+        if (this.isWall(x, y)) continue;
+        mate.spawn(def, x, y, enemyLevel(this.area.level));
+      }
+    }
     if (def.guaranteedLoot && !initial) EventBus.emit(GameEvents.Toast, `……${def.name}の気配がする`, '#c58cff');
   }
 
@@ -137,6 +153,9 @@ export class FieldScene extends WorldScene {
         rarityBonus: rarityBonus(),
       });
       if (item) this.spawnDrop(item, enemy.x, enemy.y);
+      // 低確率の特別なドロップ（輪廻の欠片など）
+      const rd = enemy.def.rareDrop;
+      if (rd && Math.random() < rd.chance) this.spawnDrop(createItem(rd.baseId, rd.rarity, enemy.level), enemy.x, enemy.y);
       // レアモンスターの確定ドロップ
       const gl = enemy.def.guaranteedLoot;
       for (let i = 0; gl && i < gl.count; i++) {
@@ -207,6 +226,15 @@ export class FieldScene extends WorldScene {
     EventBus.emit(GameEvents.Toast, '宝箱を開けた！', '#ffd23f');
   }
 
+  protected collectDrops() {
+    for (const d of [...this.drops]) {
+      if (!addToInventory(d.item)) continue;
+      d.destroy();
+      this.drops.splice(this.drops.indexOf(d), 1);
+      EventBus.emit(GameEvents.ItemPickedUp, d.item);
+    }
+  }
+
   protected dropStoryItem(item: ItemInstance) {
     this.spawnDrop(item, this.player.x, this.player.y - 20);
   }
@@ -243,6 +271,12 @@ export class FieldScene extends WorldScene {
       d.collect(p.x, p.y);
       this.drops.splice(i, 1);
       EventBus.emit(GameEvents.ItemPickedUp, d.item);
+      // 記憶の断片が記録された装備：拾うと断片が1つ流れる
+      const lore = ITEM_BASES[d.item.baseId]?.lore;
+      if (lore?.length) {
+        const line = lore[Math.floor(Math.random() * lore.length)];
+        this.time.delayedCall(300, () => this.playLines([{ t: `${d.item.name}に、記憶が残っている……` }, { t: line }]));
+      }
     }
   }
 
@@ -270,7 +304,8 @@ export class FieldScene extends WorldScene {
     this.updatePickup();
     this.drawHpBars();
     const b = this.boss;
-    HudState.boss = b && b.alive ? { name: b.def.name, hp: b.hp, maxHp: b.maxHp } : null;
+    const using = b && (b.state === 'windup' || b.state === 'lunge') ? (b.currentAttack as BossPatternDef | undefined)?.name ?? null : null;
+    HudState.boss = b && b.alive ? { name: b.def.name, hp: b.hp, maxHp: b.maxHp, attack: using } : null;
   }
 
   private drawHpBars() {

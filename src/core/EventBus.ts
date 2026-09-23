@@ -14,8 +14,10 @@ export const GameEvents = {
   EnemyKilled: 'enemy-killed',
   /** () 経験値が変わった */
   ExpChanged: 'exp-changed',
-  /** (level: number) */
+  /** (level: number, statPoints: number) 上がったあとのレベルと、もらったステータスポイント */
   LevelUp: 'level-up',
+  /** () ステータスポイントを振った */
+  StatsChanged: 'stats-changed',
   /** () ジョブを切り替えた */
   JobChanged: 'job-changed',
   /** () 装備の付け替え・売却 */

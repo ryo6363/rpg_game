@@ -17,5 +17,6 @@ export const HudState = {
   /** スキルボタンが使えるか（町では使えない） */
   skillsEnabled: true,
   /** 戦闘中のボス（HP バーを出す） */
-  boss: null as { name: string; hp: number; maxHp: number } | null,
+  /** attack = いま使っている技の名前（溜め・突進・特殊技の間だけ） */
+  boss: null as { name: string; hp: number; maxHp: number; attack: string | null } | null,
 };

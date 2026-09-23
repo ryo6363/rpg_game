@@ -83,8 +83,9 @@ src/
 ### 拡張のしかた
 
 - **敵を増やす**: `data/sprites.ts` に見た目、`data/enemies.ts` に定義を追加し、`data/areas.ts` の `enemies` に登録
-- **敵の攻撃範囲（予兆）**: `data/enemies.ts` の `attack` に形（円 circle／扇 cone／直線 line／ドーナツ ring／十字 cross／長方形 rect）と溜め時間を書く。連続攻撃（repeat）・ばらまき（scatter）・突進の接触判定（contact）・炎の床（trail）・弾（projectile）・水たまりを残す（leaveWater）・引き寄せ（pull）・特殊技（special：王都崩壊／時葬／輪廻断絶／潜航／津波・尻尾の薙ぎ払い／渦の弾幕／幻影／輪廻の海）も指定できる。敵そのものには透明化（blink）・防御姿勢（guard）・戦闘中の台詞（barks）・確定ドロップ（guaranteedLoot）を付けられる。見た目の色は `config/balance.ts` の TELEGRAPH
+- **敵の攻撃範囲（予兆）**: `data/enemies.ts` の `attack` に形（円 circle／扇 cone／直線 line／ドーナツ ring／十字 cross／長方形 rect）と溜め時間を書く。連続攻撃（repeat）・ばらまき（scatter）・突進の接触判定（contact）・炎の床（trail）・弾（projectile）・水たまりを残す（leaveWater）・引き寄せ（pull）・特殊技（special：王都崩壊／時葬／輪廻断絶／潜航／津波・尻尾の薙ぎ払い／渦の弾幕／幻影／輪廻の海／時計盤の針／時間逆行／過去再演／輪廻の鎖／終焉時計／時間停止）も指定できる。敵そのものには透明化（blink）・防御姿勢（guard）・戦闘中の台詞（barks）・確定ドロップ（guaranteedLoot）・低確率の特別ドロップ（rareDrop）・数回に1回の別攻撃（altAttack）・群れ（pack）・色味（tint）・飛行（hover）を付けられる。過去再演は、指定したボスの技（data/enemies.ts の patterns）をそのまま幻影に使わせる見た目の色は `config/balance.ts` の TELEGRAPH
 - **新しい敵の動き**: `systems/EnemyAI.ts` に関数を追加して `ENEMY_AI` に登録
+- **ステータスポイント**: Lv1 で1ポイント、レベルが1上がるごとに1ポイント（ジョブごと）。画面右上の持ち物ボタンの左にあるステータスボタン（PC は C キー）から攻撃力・防御力・速度・HPアップ・会心率に振る。1ポイントあたりの上昇量は `config/balance.ts` の STAT_POINT_VALUES、もらえる数は STAT_POINTS。最終ステータスの計算は `systems/StatCalculator.ts` に集約（ポイントの補正は allocationModifiers。一定数振ったときの追加効果などはここに足す）
 - **装備の種類を増やす**: `data/itemBases.ts` に追加（アイコンは `data/sprites.ts` の ICON_SPRITES）
 - **追加効果を増やす**: `data/affixes.ts` に追加。ドロップ率・レアリティ確率などは `config/balance.ts` の LOOT
 - **スキルを増やす**: `data/skills.ts` に定義。新しい種類（弾・範囲など）は `systems/SkillRunner.ts` に処理を追加
@@ -95,5 +96,6 @@ src/
 - **ボス**: `data/enemies.ts` で `ai: 'boss'` にし、`boss.patterns`（攻撃パターン）と `phases`（フェーズが変わる HP の割合）を書く。`data/areas.ts` の `boss` で出現位置を指定
 - **調べる物**: `data/areas.ts` の `objects` に置き、ストーリーの `touch` イベントで台詞を付ける。`loot` を付けると宝箱（1周に1回）、`hidden` はイベント（spawnObject）で出す物、`hideWhen` はフラグで消える物
 - **水**: 浅瀬タイル（`%`）と水たまりは入ると遅くなる（ダメージなし）。遅くなる割合と潮の満ち引きの周期は `config/balance.ts` の WATER、潮だまりの位置はエリアの `tideMarker` の文字
+- **演出つきのイベント**: ストーリーの `then` で、過去の映像（flashback）・時計が砕けて時間が止まる（clockBreak）・世界の崩壊（collapse）・章タイトルの暗転（titleCard）を使える。エリアの `frozenWhen` のフラグが立つと、そのエリアは時間が止まった状態（モノクロ）になる
 - **エリア・出入口**: `data/areas.ts` の `exits` に「踏む文字・行き先・出現位置の文字」を書く
 - **町の NPC**: `data/areas.ts` の `npcs` に追加（見た目は `data/sprites.ts` の personSprite）

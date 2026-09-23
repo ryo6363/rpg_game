@@ -52,6 +52,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private pushY = 0;
   /** 吹き飛ばされている間の速度と残り時間（津波・尻尾） */
   private knock = { vx: 0, vy: 0, t: 0 };
+  private chainTime = 0;
+  private chainMul = 1;
+  private frozenTime = 0;
 
   private attackTimer = 0;
   private attackPose = 0;
@@ -120,6 +123,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   revive(x: number, y: number) {
     this.dead = false;
     this.knock.t = 0;
+    this.chainTime = 0;
+    this.frozenTime = 0;
     this.buffs = [];
     this.recalcStats(true);
     this.setPosition(x, y);
@@ -145,6 +150,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   push(vx: number, vy: number) {
     this.pushX += vx;
     this.pushY += vy;
+  }
+
+  /** time 秒間、鎖につながれて遅くなる（mul = 速さの倍率） */
+  setChained(time: number, mul: number) {
+    this.chainTime = time;
+    this.chainMul = mul;
+  }
+
+  get chained(): boolean {
+    return this.chainTime > 0;
+  }
+
+  /** time 秒間、動けない（時間停止） */
+  freeze(time: number) {
+    this.frozenTime = time;
   }
 
   /** time 秒間、操作より優先して吹き飛ばす */
@@ -179,7 +199,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const moving = mx !== 0 || my !== 0;
     if (moving) this.faceAngle = Math.atan2(my, mx);
 
-    if (this.dash) {
+    this.chainTime -= dt;
+    this.frozenTime -= dt;
+    if (this.frozenTime > 0) {
+      // 時間停止：動けない
+      this.dash = null;
+      this.body.setVelocity(0, 0);
+    } else if (this.dash) {
       this.updateDash(dt, world);
     } else if (this.knock.t > 0) {
       // 吹き飛ばされている間は操作できない
@@ -188,7 +214,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     } else {
       // 水の中では遅くなる
       const water = world.moveMultiplierAt(this.x, this.y);
-      const speed = this.stats.moveSpeed * water * (this.attackPose > 0 ? PLAYER.attackMoveMultiplier : 1);
+      const chain = this.chainTime > 0 ? this.chainMul : 1;
+      const speed = this.stats.moveSpeed * water * chain * (this.attackPose > 0 ? PLAYER.attackMoveMultiplier : 1);
       this.body.setVelocity(mx * speed + this.pushX, my * speed + this.pushY);
       if (this.canAttack) {
         this.updateAttack(world);

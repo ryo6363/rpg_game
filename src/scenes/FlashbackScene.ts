@@ -12,14 +12,20 @@ import { createText } from '../ui/text';
 export class FlashbackScene extends Phaser.Scene {
   private onComplete?: () => void;
   private done = false;
+  /** 映る場所（city = 沈む前の都市 / fortress = 城塞都市） */
+  private variant: 'city' | 'fortress' = 'city';
+  /** 途中で映像が途切れる */
+  private cut = false;
 
   constructor() {
     super('Flashback');
   }
 
-  init(data: { onComplete?: () => void }) {
+  init(data: { onComplete?: () => void; variant?: 'city' | 'fortress'; cut?: boolean }) {
     this.onComplete = data.onComplete;
     this.done = false;
+    this.variant = data.variant ?? 'city';
+    this.cut = !!data.cut;
   }
 
   create() {
@@ -38,14 +44,27 @@ export class FlashbackScene extends Phaser.Scene {
     g.fillStyle(SEPIA_LIGHT, 1).fillRect(0, 0, W, H);
     const horizon = H * 0.55;
     g.fillStyle(SEPIA, 1);
-    let x = 0;
-    let seed = 7;
-    while (x < W) {
-      seed = (seed * 9301 + 49297) % 233280;
-      const bw = 10 + (seed % 18);
-      const bh = 20 + ((seed >> 3) % 60);
-      g.fillRect(x, horizon - bh, bw - 2, bh);
-      x += bw;
+    if (this.variant === 'fortress') {
+      // 城壁と塔、中央の大きな門（今と同じ城塞都市）
+      const wallTop = horizon - 36;
+      g.fillRect(0, wallTop, W, 36);
+      for (let x = 0; x < W; x += 8) g.fillRect(x, wallTop - 4, 5, 4);
+      for (const tx of [W * 0.12, W * 0.38, W * 0.62, W * 0.88]) {
+        g.fillRect(tx - 7, wallTop - 30, 14, 30);
+        g.fillTriangle(tx - 9, wallTop - 30, tx + 9, wallTop - 30, tx, wallTop - 44);
+      }
+      g.fillStyle(SEPIA_DARK, 1).fillRect(W / 2 - 12, horizon - 24, 24, 24);
+      g.fillCircle(W / 2, horizon - 24, 12);
+    } else {
+      let x = 0;
+      let seed = 7;
+      while (x < W) {
+        seed = (seed * 9301 + 49297) % 233280;
+        const bw = 10 + (seed % 18);
+        const bh = 20 + ((seed >> 3) % 60);
+        g.fillRect(x, horizon - bh, bw - 2, bh);
+        x += bw;
+      }
     }
     // 道路
     g.fillStyle(SEPIA_DARK, 1).fillRect(0, horizon, W, H - horizon);
@@ -57,7 +76,7 @@ export class FlashbackScene extends Phaser.Scene {
     const carKey = JOBS[gameState.currentJob].sprite;
     const car = this.add.sprite(-20, horizon + 16, carKey, 0).setScale(2).setTint(0xc8a070).play(`${carKey}_move`);
     scene.add(car);
-    this.tweens.add({ targets: car, x: W * 0.5, duration: 2200, ease: 'Quad.easeOut', delay: 400 });
+    const drive = this.tweens.add({ targets: car, x: W * 0.5, duration: 2200, ease: 'Quad.easeOut', delay: 400 });
 
     // 古い映像のような走査線とノイズ
     const lines = this.add.graphics();
@@ -85,7 +104,26 @@ export class FlashbackScene extends Phaser.Scene {
     // 白い光 → 映像が浮かび上がる → 消える
     cam.flash(400, 255, 255, 255);
     this.tweens.add({ targets: scene, alpha: 1, duration: 500 });
-    this.time.delayedCall(3600, () => this.finish());
+    if (this.cut) {
+      // 映像が途中で止まり、ノイズに埋もれて途切れる
+      this.time.delayedCall(2300, () => {
+        drive.pause();
+        caption.setText('記録 No.???  ――信号が途切れました');
+        const storm = this.add.graphics();
+        scene.add(storm);
+        this.time.addEvent({
+          delay: 40,
+          repeat: 30,
+          callback: () => {
+            storm.clear();
+            storm.fillStyle(0xffffff, 0.5);
+            for (let i = 0; i < 60; i++) storm.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 30, 1 + Math.random() * 2);
+            scene.x = (Math.random() - 0.5) * 12;
+          },
+        });
+      });
+      this.time.delayedCall(3800, () => this.finish());
+    } else this.time.delayedCall(3600, () => this.finish());
     // 1秒たったらタップで飛ばせる
     this.time.delayedCall(1000, () => this.input.once('pointerup', () => this.finish()));
   }

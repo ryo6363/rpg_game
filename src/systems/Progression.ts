@@ -2,6 +2,7 @@ import { EXP } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { SaveManager } from '../core/SaveManager';
+import { grantStatPoints } from './StatPoints';
 
 // 経験値とレベル（ジョブごと）
 
@@ -23,7 +24,9 @@ export function gainExp(amount: number): number {
   if (job.level >= EXP.maxLevel) job.exp = 0;
   EventBus.emit(GameEvents.ExpChanged);
   if (ups > 0) {
-    EventBus.emit(GameEvents.LevelUp, job.level);
+    // 上がったレベルの数だけステータスポイント（Lv10 → Lv13 なら +3）
+    const points = grantStatPoints(ups);
+    EventBus.emit(GameEvents.LevelUp, job.level, points);
     SaveManager.requestSave();
   }
   return ups;

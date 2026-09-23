@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { viewport } from '../core/Viewport';
+import { sceneForArea } from '../data/areas';
 import { CHAPTERS } from '../data/chapters';
 import { JOBS } from '../data/jobs';
 import { createText } from '../ui/text';
@@ -39,7 +40,8 @@ export class TitleScene extends Phaser.Scene {
     const start = () => {
       if (started) return;
       started = true;
-      this.scene.start('Town', { areaId: CHAPTERS[gameState.story.chapter]?.startArea ?? 'town' });
+      const areaId = CHAPTERS[gameState.story.chapter]?.startArea ?? 'town';
+      this.scene.start(sceneForArea(areaId), { areaId });
     };
 
     // ---- 隠しデバッグメニュー

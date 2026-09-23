@@ -37,6 +37,12 @@ export const TILE_TYPES: TileType[] = [
   { char: '!', name: 'ruin', collide: true },
   { char: '+', name: 'crystal', collide: true },
   { char: '|', name: 'pier', collide: false },
+  // 城塞都市・終焉王国・世界の果て
+  { char: 'Z', name: 'royal_stone', collide: false },
+  { char: 'Y', name: 'castle_wall', collide: true },
+  { char: 'J', name: 'pillar', collide: true },
+  { char: 'N', name: 'carpet', collide: false },
+  { char: '0', name: 'void', collide: true },
   /** 出入口。エリア定義の exits の文字もこのタイルで描く */
   { char: '#', name: 'gate', collide: false },
 ];

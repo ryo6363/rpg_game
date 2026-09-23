@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { gameState } from '../core/GameState';
 import { SaveManager } from '../core/SaveManager';
 import { viewport } from '../core/Viewport';
+import { sceneForArea } from '../data/areas';
 import { CHAPTERS } from '../data/chapters';
 import { currentLoop, startNextLoop } from '../systems/Story';
 import { closeOverlay } from '../ui/overlay';
@@ -55,7 +56,7 @@ export class ChapterClearScene extends Phaser.Scene {
       this.button(cx, y + 24, 'つぎへ', 0x257179, () => {
         gameState.story.chapter = nextCh.id;
         SaveManager.save();
-        this.scene.start('Town', { areaId: nextCh.startArea });
+        this.scene.start(sceneForArea(nextCh.startArea), { areaId: nextCh.startArea });
       });
       return;
     }
@@ -63,7 +64,7 @@ export class ChapterClearScene extends Phaser.Scene {
     if (nextCh) {
       this.text(cx, y, `第${nextCh.id}章「${nextCh.title}」は準備中です`, 8, '#94b0c2');
       y += 24;
-      this.button(cx, y, '街で探索をつづける', 0x333c57, () => closeOverlay(this));
+      this.button(cx, y, '探索をつづける', 0x333c57, () => closeOverlay(this));
       y += 22;
     }
     this.button(cx, y, `周回する（${currentLoop() + 1}周目へ）`, 0xb8860b, () => this.startLoop());

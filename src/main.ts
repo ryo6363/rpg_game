@@ -8,6 +8,8 @@ import { updateViewport, viewport } from './core/Viewport';
 import { BootScene } from './scenes/BootScene';
 import { FieldScene } from './scenes/FieldScene';
 import { FlashbackScene } from './scenes/FlashbackScene';
+import { TitleCardScene } from './scenes/TitleCardScene';
+import { StatusScene } from './scenes/StatusScene';
 import { ChapterClearScene } from './scenes/ChapterClearScene';
 import { DebugScene } from './scenes/DebugScene';
 import { DialogScene } from './scenes/DialogScene';
@@ -73,6 +75,8 @@ const game = new Phaser.Game({
     ChapterClearScene,
     DebugScene,
     FlashbackScene,
+    TitleCardScene,
+    StatusScene,
   ],
 });
 

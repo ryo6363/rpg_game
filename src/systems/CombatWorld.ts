@@ -55,6 +55,8 @@ export interface AoeSpec {
   leaveWater?: { radius: number; duration: number };
   /** 判定の瞬間に呼ばれる（最終的な位置が渡される） */
   onResolve?: (spec: AoeSpec) => void;
+  /** 塗りの色（省略時は赤。輪廻の鎖は紫） */
+  color?: number;
 }
 
 /** 津波・尻尾の横薙ぎ：エリアを横切る帯。当たるとダメージとノックバック */
@@ -121,6 +123,8 @@ export interface CombatWorld {
   vortexEffect(x: number, y: number, dir: number, duration: number): void;
   /** 頭上に吹き出しの台詞を出す */
   showSpeech(x: number, y: number, text: string): void;
+  /** 数字などを浮かび上がらせる（回復量など） */
+  showFloat(x: number, y: number, text: string, color: string): void;
   /** 予兆範囲の判定時の演出（炎など） */
   showAoeEffect(spec: AoeSpec): void;
   /** 爆発などの円形エフェクト */

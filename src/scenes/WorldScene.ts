@@ -53,6 +53,8 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   protected lastBossPos: { x: number; y: number } | null = null;
   private arrive = '@';
   private leaving = false;
+  /** 時間が止まっているときのモノクロ */
+  private timeFx: Phaser.FX.ColorMatrix | null = null;
 
   get gameScene(): Phaser.Scene {
     return this;
@@ -62,6 +64,7 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.area = AREAS[data.areaId];
     this.arrive = data.arrive ?? '@';
     this.leaving = false;
+    this.timeFx = null;
   }
 
   /** 各シーンの create の最初に呼ぶ */
@@ -106,11 +109,15 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
       this.player.recalcStats();
       this.emitHp();
     };
-    const onLevelUp = (level: number) => {
+    const onLevelUp = (level: number, points = 0) => {
       this.player.recalcStats(true);
       this.emitHp();
       this.floatText.show(this.player.x, this.player.y - 12, `LEVEL UP! Lv${level}`, '#a7f070', true);
       this.sparks.explode(20, this.player.x, this.player.y);
+      if (points > 0) {
+        this.time.delayedCall(350, () => this.floatText.show(this.player.x, this.player.y - 12, `ステータスポイント +${points}`, '#ffd23f', true));
+        EventBus.emit(GameEvents.Toast, `ステータスポイント +${points}（右上のボタンで振り分け）`, '#ffd23f');
+      }
     };
     const onJob = () => {
       this.player.setJob(gameState.currentJob);
@@ -120,6 +127,7 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     const handlers: [string, (...args: any[]) => void][] = [
       [GameEvents.ViewportChanged, onViewport],
       [GameEvents.EquipmentChanged, onEquip],
+      [GameEvents.StatsChanged, onEquip],
       [GameEvents.LevelUp, onLevelUp],
       [GameEvents.JobChanged, onJob],
     ];
@@ -134,6 +142,8 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.scene.bringToTop('UI');
     this.createObjects();
     this.refreshObjectFrames();
+    // 時間が止まった世界（NPC などを置き終えてから止める）
+    if (this.area.frozenWhen && hasFlag(this.area.frozenWhen)) this.time.delayedCall(0, () => this.stopTime());
 
     // UIScene の create が終わってから初期値を通知し、エリアに入ったときのイベントを起こす
     this.time.delayedCall(0, () => {
@@ -209,7 +219,11 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
 
   private updateObjects() {
     for (const o of this.objects) {
-      if (o.touched) continue;
+      if (o.touched) {
+        // 離れたら、もう一度調べられる（宝箱・消えた物は除く）
+        if (!o.def.loot && !o.hiding && Math.hypot(o.img.x - this.player.x, o.img.y - this.player.y) > 34) o.touched = false;
+        continue;
+      }
       if (Math.hypot(o.img.x - this.player.x, o.img.y - this.player.y) < 20) {
         if (o.def.loot) {
           // 宝箱：開けて装備を出す（1周に1回）
@@ -262,16 +276,31 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     if (!then || then.type === 'npcMenu') return next();
     switch (then.type) {
       case 'chapterClear':
-        openOverlay(this, 'ChapterClear', { chapter: gameState.story.chapter });
+        openOverlay(this, 'ChapterClear', { chapter: then.chapter ?? gameState.story.chapter });
+        return;
+      case 'clockBreak':
+        this.clockBreak(next);
+        return;
+      case 'collapse':
+        this.collapse(next);
+        return;
+      case 'titleCard':
+        openOverlay(this, 'TitleCard', {
+          title: then.title,
+          subtitle: then.subtitle,
+          onComplete: () => this.goToArea(then.area, then.arrive),
+        });
         return;
       case 'goTo':
+        // イベントで別の場所へ運ばれるときは、落ちている装備を拾ってから
+        this.collectDrops();
         this.goToArea(then.area, then.arrive);
         return;
       case 'dropItem':
         this.dropStoryItem(createItem(then.baseId, then.rarity, enemyLevel(this.area.level)));
         return next();
       case 'flashback':
-        openOverlay(this, 'Flashback', { onComplete: next });
+        openOverlay(this, 'Flashback', { onComplete: next, variant: then.variant, cut: then.cut });
         return;
       case 'spawnObject': {
         const def = this.area.objects?.find((o) => o.id === then.object);
@@ -283,6 +312,109 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
       }
     }
   }
+
+  // ------------------------------------------------------------ 第4章の演出
+
+  /** 時間が止まる：画面がモノクロになり、主人公以外の動きが止まる */
+  protected stopTime() {
+    const cam = this.cameras.main;
+    if (!this.timeFx && this.game.renderer.type === Phaser.WEBGL) {
+      this.timeFx = cam.postFX.addColorMatrix();
+      this.timeFx.grayscale(1);
+    }
+    for (const o of this.children.list) {
+      if (o instanceof Phaser.GameObjects.Sprite && o !== this.player) o.anims.pause();
+    }
+  }
+
+  /** 巨大な時計が現れて砕け散り、時間が止まる */
+  private clockBreak(next: () => void) {
+    const pos = this.lastBossPos ?? { x: this.player.x, y: this.player.y - 40 };
+    const cam = this.cameras.main;
+    const clock = this.add.image(pos.x, pos.y - 16, 'big_clock', 0).setAlpha(0).setScale(1.5).setDepth(pos.y + 200);
+    this.tweens.add({ targets: clock, alpha: 1, duration: 500 });
+    this.time.delayedCall(1100, () => {
+      cam.shake(600, 0.012);
+      cam.flash(300, 255, 255, 255);
+      Sfx.boom(0.6);
+      // 砕けた破片
+      for (let i = 0; i < 18; i++) {
+        const a = (i / 18) * Math.PI * 2 + Math.random() * 0.3;
+        const d = 30 + Math.random() * 50;
+        const shard = this.add
+          .image(clock.x, clock.y, 'fx_crystal_shard', 0)
+          .setTint(i % 3 ? 0xffcd75 : 0xf4f4f4)
+          .setDepth(clock.depth + 1);
+        this.tweens.add({
+          targets: shard,
+          x: clock.x + Math.cos(a) * d,
+          y: clock.y + Math.sin(a) * d + 20,
+          angle: (Math.random() - 0.5) * 540,
+          alpha: 0,
+          duration: 900 + Math.random() * 400,
+          ease: 'Quad.easeOut',
+          onComplete: () => shard.destroy(),
+        });
+      }
+      clock.destroy();
+      this.sparks.explode(24, pos.x, pos.y - 16);
+    });
+    // 音が消え、時間が止まる
+    this.time.delayedCall(1700, () => {
+      Sfx.chime();
+      this.stopTime();
+    });
+    this.time.delayedCall(2600, next);
+  }
+
+  /** 世界の崩壊：景色も人も、光の粒になって消えていく。主人公の FIT だけが残る */
+  private collapse(next: () => void) {
+    const cam = this.cameras.main;
+    if (this.timeFx) {
+      cam.postFX.remove(this.timeFx as unknown as Phaser.FX.Controller);
+      this.timeFx = null;
+    }
+    cam.flash(500, 255, 255, 255);
+    cam.shake(3000, 0.003);
+    Sfx.boom(0.6);
+    const view = cam.worldView;
+    const motes = this.add
+      .particles(0, 0, 'fx_spark', {
+        x: { min: view.x, max: view.right },
+        y: { min: view.y, max: view.bottom },
+        lifespan: 1400,
+        speedY: { min: -50, max: -15 },
+        speedX: { min: -10, max: 10 },
+        scale: { start: 1, end: 0 },
+        tint: [0xffffff, 0xffcd75, 0x73eff7],
+        frequency: 16,
+        quantity: 3,
+      })
+      .setDepth(99990);
+    const keep = new Set<Phaser.GameObjects.GameObject>([this.player, motes, this.sparks]);
+    for (const o of [...this.children.list]) {
+      if (keep.has(o) || !('alpha' in o)) continue;
+      const target = o as Phaser.GameObjects.GameObject & { alpha: number; x?: number; y?: number };
+      const delay = Math.random() * 1800;
+      this.tweens.add({
+        targets: target,
+        alpha: 0,
+        delay,
+        duration: 900,
+        onStart: () => {
+          if (typeof target.x === 'number' && typeof target.y === 'number' && target.x > 0) this.sparks.explode(4, target.x, target.y);
+        },
+      });
+    }
+    this.time.delayedCall(2600, () => cam.setBackgroundColor('#000000'));
+    this.time.delayedCall(3400, () => {
+      motes.stop();
+      next();
+    });
+  }
+
+  /** 落ちている装備をすべて拾う（フィールドのみ） */
+  protected collectDrops() {}
 
   /** 宝箱の中身（フィールドでは地面に落とす） */
   protected dropLootAt(_x: number, _y: number, _minRarity: Rarity) {}
@@ -433,6 +565,10 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   }
 
   /** 頭上の吹き出し（戦闘は止めない） */
+  showFloat(x: number, y: number, text: string, color: string) {
+    this.floatText.show(x, y, text, color, true);
+  }
+
   showSpeech(x: number, y: number, text: string) {
     const t = createText(this, x, y - 16, text, 6, '#f4f4f4', { backgroundColor: '#1a1c2ccc', padding: { x: 2, y: 1 } })
       .setOrigin(0.5, 1)

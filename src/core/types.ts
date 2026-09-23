@@ -21,6 +21,17 @@ export interface Stats {
 
 export type StatKey = keyof Stats;
 
+/** ステータスポイントを振れる項目（攻撃力・防御力・速度・HP%アップ・会心率） */
+export type StatAllocKey = 'attack' | 'defense' | 'speed' | 'hp' | 'crit';
+/** 項目ごとに振ったポイント数 */
+export type StatAllocation = Record<StatAllocKey, number>;
+
+/** ステータスポイント（ジョブごと）。statPoints = 未使用のポイント */
+export interface PlayerStatPoints {
+  statPoints: number;
+  allocatedStats: StatAllocation;
+}
+
 /**
  * スキルの種類。種類ごとの処理は systems/SkillRunner.ts
  * - meleeArc: 前方の扇形を攻撃
@@ -166,9 +177,25 @@ export interface EnemyAttackDef {
   phantoms?: { count: number; stagger: number };
   /** vortex: 弾幕の続く時間・発射間隔・1回に撃つ方向の数 */
   vortex?: { duration: number; interval: number; spokes: number; speed: number };
-  /** arenaCollapse: 残す安全地帯の数 / エリアの広さ */
+  /** arenaCollapse・doomClock: 残す安全地帯の数 / エリアの広さ */
   safeSpots?: number;
   arenaRadius?: number;
+  /** 判定の瞬間に範囲の中心へ跳ぶ（跳びかかり・急降下） */
+  leap?: boolean;
+  /** 跳ぶ時間（秒。省略時 0.2） */
+  leapTime?: number;
+
+  // ---- 第4章（輪廻王クロノス）
+  /** clockHands: 時計の針（中心から伸びる帯）が回る。speeds = 針ごとの回る速さ（ラジアン/秒） */
+  hands?: { duration: number; width: number; speeds: number[] };
+  /** rewind: 直前 window 秒に受けたダメージの ratio を回復（最大 HP の max 割合まで） */
+  rewind?: { window: number; ratio: number; max: number };
+  /** reenact: 過去のボスの幻影が、そのボスの技を使う（pool から count 体、stagger 秒ずつずらす） */
+  reenact?: { pool: { boss: string; pattern: string }[]; count: number; stagger: number };
+  /** chains: プレイヤーの周りに円。中にいると鎖につながれて遅くなり、そのあと追撃 */
+  chains?: { count: number; radius: number; slow: number; slowTime: number; followUp: AoeShape; followWindup: number };
+  /** timeFreeze: 時間停止。moveTime 秒だけ動けて、そのあとは解除まで動けない */
+  freeze?: { count: number; radius: number; moveTime: number };
 }
 
 /**
@@ -185,7 +212,13 @@ export type EnemySpecial =
   | 'sweep'
   | 'vortex'
   | 'phantoms'
-  | 'sea';
+  | 'sea'
+  | 'clockHands'
+  | 'rewind'
+  | 'reenact'
+  | 'chains'
+  | 'doomClock'
+  | 'timeFreeze';
 
 /**
  * 予兆範囲の判定時の演出
@@ -206,10 +239,6 @@ export interface BossPatternDef extends EnemyAttackDef {
   minPhase?: number;
   /** このフェーズまでしか使わない */
   maxPhase?: number;
-  /** 判定の瞬間に範囲の中心へ跳ぶ */
-  leap?: boolean;
-  /** 跳ぶ時間（秒。省略時 0.2） */
-  leapTime?: number;
 }
 
 export interface EnemyDef {
@@ -243,6 +272,18 @@ export interface EnemyDef {
   barks?: string[];
   /** 倒したときの確定ドロップ（レアモンスター用） */
   guaranteedLoot?: { count: number; minRarity: Rarity };
+  /** 低確率で落とす特別な装備（イベント専用の装備など） */
+  rareDrop?: { baseId: string; chance: number; rarity: Rarity };
+  /** every 回に1回、attack のかわりに使う攻撃（魔導兵の範囲魔法など） */
+  altAttack?: { every: number; attack: EnemyAttackDef };
+  /** 群れで出る（同時に出る数の範囲） */
+  pack?: { min: number; max: number };
+  /** 色味（強化版の敵など。乗算） */
+  tint?: number;
+  /** 飛んでいる（影が離れて、上下にふわふわ揺れる） */
+  hover?: boolean;
+  /** 体のまわりの演出（clock = 背後に回る時計盤） */
+  aura?: 'clock';
 
   /** ---- ボスのみ */
   boss?: {
@@ -331,6 +372,8 @@ export interface AreaDef {
   boss?: { id: string; marker: string };
   /** 満ち引きで現れたり消えたりする水たまりの位置の文字 */
   tideMarker?: string;
+  /** このフラグが立っていると時間が止まっている（モノクロ・人々が動かない） */
+  frozenWhen?: string;
 }
 
 // ---------------------------------------------------------------- ストーリー
@@ -368,12 +411,19 @@ export interface StoryEventDef {
   setFlags?: string[];
   /** 会話のあとの動作 */
   then?:
-    | { type: 'chapterClear' }
+    /** 章クリア画面（chapter 省略時は今の章） */
+  | { type: 'chapterClear'; chapter?: number }
     | { type: 'goTo'; area: string; arrive?: string }
     | { type: 'dropItem'; baseId: string; rarity: Rarity }
     | { type: 'npcMenu' }
-    /** 過去の映像の演出 */
-    | { type: 'flashback' }
+    /** 過去の映像の演出（variant = 映る場所 / cut = 途中で途切れる） */
+    | { type: 'flashback'; variant?: 'city' | 'fortress'; cut?: boolean }
+    /** 巨大な時計が砕け、時間が止まる（モノクロのまま） */
+    | { type: 'clockBreak' }
+    /** 世界が光の粒になって崩れていく。主人公の FIT だけが残る */
+    | { type: 'collapse' }
+    /** 暗転して章タイトルを出し、エリアへ移動 */
+    | { type: 'titleCard'; title: string; subtitle: string; area: string; arrive?: string }
     /** エリアの objects に hidden で定義した物を、最後にボスを倒した位置（なければプレイヤーの前）に出す */
     | { type: 'spawnObject'; object: string };
 }
@@ -412,6 +462,8 @@ export interface ItemBaseDef {
   minLevel: number;
   /** true ならランダムドロップに出ない（イベント専用） */
   unique?: boolean;
+  /** 拾ったときに1つ選ばれて流れる記憶の断片 */
+  lore?: string[];
 }
 
 /** 追加効果の定義。data/affixes.ts */

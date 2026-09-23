@@ -71,6 +71,11 @@ export function startNextLoop() {
 }
 
 /** 周回を反映した敵レベル */
+/** フィールドの敵の数の倍率（1周目は少なめ、2周目から少しずつ増える） */
+export function enemyCountMultiplier(): number {
+  return Math.min(LOOP.enemyCountMax, LOOP.enemyCountFirst + (currentLoop() - 1) * LOOP.enemyCountPerLoop);
+}
+
 export function enemyLevel(areaLevel: number): number {
   return areaLevel + (currentLoop() - 1) * LOOP.levelPerLoop;
 }

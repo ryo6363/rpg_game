@@ -52,6 +52,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   vortexDir = 1;
   /** 台詞を出したか（最初の一撃・HP半分） */
   barked = { hit: false, half: false };
+  /** 普通の攻撃を何回使ったか（altAttack の切り替え用） */
+  attackCount = 0;
+  /** 受けたダメージの記録（時間逆行で使う） */
+  private damageLog: { t: number; amount: number }[] = [];
+  /** 背後の時計盤など */
+  private aura: Phaser.GameObjects.Graphics | null = null;
+  private auraTime = 0;
   private blinkTimer = 0;
   private blinkLeft = 0;
   private guardUsed = false;
@@ -103,10 +110,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.blinkLeft = 0;
     this.guardUsed = false;
     this.guardLeft = 0;
+    this.attackCount = 0;
+    this.damageLog = [];
+    this.aura?.destroy();
+    this.aura = def.aura ? this.scene.add.graphics() : null;
 
     this.setTexture(def.sprite, 0);
     this.setPosition(x, y).setActive(true).setVisible(true).setAlpha(1).setScale(1).setAngle(0);
-    this.clearTint();
+    this.resetTint();
     this.body.enable = true;
     // 当たり判定は絵の中心より少し下（足元寄り）
     const w = this.frame.width;
@@ -141,6 +152,26 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     return this.guardLeft > 0;
   }
 
+  /** 元の色に戻す（強化版の敵は色味つき） */
+  private resetTint() {
+    if (this.def.tint) this.setTint(this.def.tint);
+    else this.clearTint();
+  }
+
+  /** 直前 window 秒に受けたダメージの合計 */
+  recentDamage(window: number): number {
+    const since = this.scene.time.now - window * 1000;
+    return this.damageLog.filter((d) => d.t >= since).reduce((sum, d) => sum + d.amount, 0);
+  }
+
+  /** 回復（最大 HP まで） */
+  heal(amount: number): number {
+    const before = this.hp;
+    this.hp = Math.min(this.maxHp, this.hp + amount);
+    this.damageLog = [];
+    return Math.round(this.hp - before);
+  }
+
   setEnemyState(state: EnemyState, timer = 0) {
     this.state = state;
     this.stateTimer = timer;
@@ -154,6 +185,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (!this.alive || this.hidden) return { died: false, phaseUp: false, guardStarted: false };
     this.hp -= amount;
     this.hitFlash = COMBAT.hitFlashTime;
+    if (this.def.boss) {
+      this.damageLog.push({ t: this.scene.time.now, amount });
+      if (this.damageLog.length > 200) this.damageLog.shift();
+    }
     if (this.hp <= 0) {
       this.die();
       return { died: true, phaseUp: false, guardStarted: false };
@@ -186,6 +221,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   private die() {
+    if (this.aura) this.scene.tweens.add({ targets: this.aura, alpha: 0, duration: 600 });
     this.setEnemyState('dead');
     this.body.setVelocity(0, 0);
     this.body.enable = false;
@@ -214,6 +250,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   deactivate() {
+    this.aura?.destroy();
+    this.aura = null;
     this.setActive(false).setVisible(false);
     this.body.enable = false;
     this.shadow.setVisible(false);
@@ -265,7 +303,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.hitFlash > 0) this.setTintFill(0xffffff);
     else if (this.state === 'windup' && Math.floor(this.stateTimer * 16) % 2 === 0) this.setTint(0xff6060);
     else if (this.guardLeft > 0) this.setTint(0x73eff7);
-    else this.clearTint();
+    else this.resetTint();
     // 炎の攻撃の溜め中は、口元に青白い炎がちらつく
     this.flameTimer -= dt;
     if (this.state === 'windup' && this.currentAttack?.effect === 'flame' && this.flameTimer <= 0) {
@@ -273,7 +311,48 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.spawnMouthFlame();
     }
     this.setDepth(this.y);
-    const footY = this.frame.height * 0.35;
+    let footY = this.frame.height * 0.35;
+    if (this.def.hover) {
+      // 飛んでいる：影を下に離し、影の大きさで上下の揺れを見せる
+      this.auraTime += dt;
+      footY += 10 + Math.sin(this.auraTime * 4) * 2;
+      this.shadow.setScale(0.8 + Math.sin(this.auraTime * 4) * 0.1);
+    }
     this.shadow.setPosition(Math.round(this.x), Math.round(this.y + footY)).setDepth(this.y - 1);
+    if (this.aura) this.drawClockAura(dt);
+  }
+
+  /** 背後で回る時計盤と、まわりを漂う光の粒 */
+  private drawClockAura(dt: number) {
+    const g = this.aura!;
+    this.auraTime += dt;
+    const t = this.auraTime;
+    const cx = this.x;
+    const cy = this.y - 8;
+    const R = 24;
+    g.clear().setDepth(this.y - 2).setAlpha(this.alpha * 0.8);
+    g.lineStyle(1, 0xffcd75, 0.7).strokeCircle(cx, cy, R);
+    g.lineStyle(1, 0xffcd75, 0.35).strokeCircle(cx, cy, R - 3);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const r0 = i % 3 === 0 ? R - 5 : R - 3;
+      g.lineStyle(1, 0xffcd75, 0.7).lineBetween(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0, cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+    }
+    // 長針と短針
+    const long = t * 1.2;
+    const short = t * 0.3;
+    g.lineStyle(1, 0xf4f4f4, 0.8).lineBetween(cx, cy, cx + Math.cos(long) * (R - 6), cy + Math.sin(long) * (R - 6));
+    g.lineStyle(2, 0xf4f4f4, 0.8).lineBetween(cx, cy, cx + Math.cos(short) * (R - 12), cy + Math.sin(short) * (R - 12));
+    // 漂う光の粒と、小さな時計の針
+    for (let i = 0; i < 8; i++) {
+      const a = t * 0.5 + (i / 8) * Math.PI * 2;
+      const r = R + 6 + Math.sin(t * 2 + i) * 4;
+      const px = cx + Math.cos(a) * r;
+      const py = cy + Math.sin(a) * r * 0.6;
+      if (i % 3 === 0) {
+        const ha = t * 2 + i;
+        g.lineStyle(1, 0xffcd75, 0.8).lineBetween(px, py, px + Math.cos(ha) * 4, py + Math.sin(ha) * 4);
+      } else g.fillStyle(0xffcd75, 0.5 + Math.sin(t * 3 + i) * 0.3).fillRect(Math.round(px), Math.round(py), 1, 1);
+    }
   }
 }

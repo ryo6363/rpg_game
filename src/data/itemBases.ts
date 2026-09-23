@@ -26,6 +26,22 @@ const list: ItemBaseDef[] = [
 
   // ---- イベント専用（ランダムドロップには出ない）
   { id: 'memory_crystal', name: '記憶の結晶', slot: 'accessory', icon: 'icon_memory', stats: { maxHp: 40, critRate: 0.05, critDamage: 0.2 }, minLevel: 1, unique: true },
+  {
+    id: 'rinne_shard',
+    name: '輪廻の欠片',
+    slot: 'accessory',
+    icon: 'icon_shard',
+    stats: { atk: 8, critRate: 0.06 },
+    minLevel: 1,
+    unique: true,
+    lore: [
+      '「……これで何周目だ？」 誰かが、FIT の運転席でそうつぶやいていた。',
+      '崩れていく王国。光の中で、FIT のナビだけが静かに光っている。',
+      '見知らぬ手が、ナビの画面に何かを入力している。……「目的地：はじまりの森」。',
+      '「次は、もっと早く。次こそ、間に合わせる」 ――自分の声だった。',
+      '玉座の前で、王が笑っている。「また会おう、旅人よ。何度でも」',
+    ],
+  },
   { id: 'varg_fang', name: 'ヴァルグの骨牙', slot: 'accessory', icon: 'icon_fang', stats: { atk: 6, critDamage: 0.2 }, minLevel: 1, unique: true },
 ];
 

@@ -9,6 +9,7 @@ import { SLOT_ORDER } from '../data/itemMeta';
 import { JOBS } from '../data/jobs';
 import { itemSlot, sellPrice, upgradeCost } from './Items';
 import { calcPlayerStats } from './StatCalculator';
+import { allocationOf } from './StatPoints';
 
 // 装備の付け替え・売却・ステータス計算の窓口
 
@@ -35,20 +36,20 @@ export function canEquip(item: ItemInstance, jobId: JobId = gameState.currentJob
 }
 
 export function currentStats(jobId: JobId = gameState.currentJob): Stats {
-  return calcPlayerStats(jobId, gameState.jobs[jobId].level, equippedItems(jobId));
+  return calcPlayerStats(jobId, gameState.jobs[jobId].level, equippedItems(jobId), allocationOf(jobId));
 }
 
 /** この装備に付け替えたときのステータス（比較表示用） */
 export function statsIfEquipped(item: ItemInstance, jobId: JobId = gameState.currentJob): Stats {
   const slot = itemSlot(item);
   const others = equippedItems(jobId).filter((i) => itemSlot(i) !== slot);
-  return calcPlayerStats(jobId, gameState.jobs[jobId].level, [...others, item]);
+  return calcPlayerStats(jobId, gameState.jobs[jobId].level, [...others, item], allocationOf(jobId));
 }
 
 /** 外したときのステータス（比較表示用） */
 export function statsIfUnequipped(slot: Slot, jobId: JobId = gameState.currentJob): Stats {
   const others = equippedItems(jobId).filter((i) => itemSlot(i) !== slot);
-  return calcPlayerStats(jobId, gameState.jobs[jobId].level, others);
+  return calcPlayerStats(jobId, gameState.jobs[jobId].level, others, allocationOf(jobId));
 }
 
 function changed() {
@@ -127,7 +128,7 @@ export function autoEquipBest(jobId: JobId = gameState.currentJob): number {
   );
   const scoreWith = (slot: Slot, item: ItemInstance) => {
     const items = SLOT_ORDER.map((s) => (s === slot ? item : chosen.get(s))).filter((i): i is ItemInstance => !!i);
-    return powerScore(calcPlayerStats(jobId, level, items));
+    return powerScore(calcPlayerStats(jobId, level, items, allocationOf(jobId)));
   };
 
   // %上昇どうしが影響し合うので、部位ごとの最適化を数回くり返す

@@ -1,6 +1,7 @@
-import type { ArmorSlot, ItemInstance, JobId } from './types';
+import type { ArmorSlot, ItemInstance, JobId, PlayerStatPoints } from './types';
 import { JOBS } from '../data/jobs';
 import { createItem } from '../systems/Items';
+import { newStatPoints } from '../data/statPoints';
 
 // 実行中のゲーム状態。SaveManager がこれを保存・復元する
 
@@ -31,6 +32,8 @@ export interface GameStateData {
     armor: Record<ArmorSlot, ItemInstance | null>;
   };
   story: StoryProgress;
+  /** ステータスポイントと振り分け（レベルと同じくジョブごと） */
+  playerStats: Record<JobId, PlayerStatPoints>;
 }
 
 export function createNewState(): GameStateData {
@@ -49,6 +52,7 @@ export function createNewState(): GameStateData {
       armor: { head: null, body: null, hands: null, feet: null, accessory: null },
     },
     story: { loop: 1, chapter: 1, flags: [] },
+    playerStats: { warrior: newStatPoints(), mage: newStatPoints(), hunter: newStatPoints() },
   };
 }
 

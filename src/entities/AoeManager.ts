@@ -192,7 +192,7 @@ export class AoeManager {
     // grow: 範囲そのものが外へ広がっていく（必殺技）
     const outline = spec.grow ? Math.min(1, 0.15 + progress * 0.85) : 1;
     // 弾の軌道などの「表示だけ」の予兆は、ダメージ範囲と区別できるよう薄い青で描く
-    const fillColor = spec.noDamage && !spec.onResolve ? 0x41a6f6 : T.fillColor;
+    const fillColor = spec.color ?? (spec.noDamage && !spec.onResolve ? 0x41a6f6 : T.fillColor);
     this.fillShape(g, spec, spec.shape, outline, fillColor, T.baseAlpha + flash * T.flashAlpha);
     if (!a.done) this.fillShape(g, spec, spec.shape, progress * outline, fillColor, T.progressAlpha);
     g.lineStyle(1, T.edgeColor, T.edgeAlpha * (a.done ? flash : 1));

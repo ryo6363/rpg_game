@@ -1,4 +1,4 @@
-import type { EnemyDef } from '../core/types';
+import type { EnemyAttackDef, EnemyDef } from '../core/types';
 
 // 敵定義。ai の種類ごとの動きは systems/EnemyAI.ts
 // attack.shape が予兆範囲（AoE）の形。溜め時間 windup のあいだに範囲から出れば避けられる
@@ -118,8 +118,9 @@ const list: EnemyDef[] = [
       patterns: [
         // ---- フェーズ1から
         {
+          // 森喰らいの牙：正面の扇に噛みつく
           id: 'bite',
-          name: '噛みつき',
+          name: '森喰らいの牙',
           weight: 3,
           range: 42,
           shape: { type: 'cone', radius: 36, angle: 110 },
@@ -128,6 +129,7 @@ const list: EnemyDef[] = [
           lunge: 110,
         },
         {
+          // 蒼炎ブレス：正面の直線に青い炎
           id: 'breath',
           name: '蒼炎ブレス',
           weight: 2,
@@ -140,8 +142,9 @@ const list: EnemyDef[] = [
         },
         // ---- フェーズ2（HP 50% 以下）から
         {
+          // 獣影跳躍：プレイヤーのいた場所へ跳びかかる
           id: 'pounce',
-          name: '跳びかかり',
+          name: '獣影跳躍',
           weight: 3,
           range: 140,
           minPhase: 2,
@@ -154,9 +157,9 @@ const list: EnemyDef[] = [
           recover: 0.4,
         },
         {
-          // 暴れ回り：狙い直しながら直線の突進を4連続
+          // 狂獣乱舞：狙い直しながら直線の突進を4連続
           id: 'rampage',
-          name: '暴れ回り',
+          name: '狂獣乱舞',
           weight: 2,
           range: 160,
           minPhase: 2,
@@ -169,9 +172,9 @@ const list: EnemyDef[] = [
           repeat: 4,
         },
         {
-          // 蒼炎の雨：プレイヤーの周りに円の予兆が時間差で次々と出て、炎が上がる
+          // 蒼炎散華：プレイヤーの周りに円の予兆が時間差で次々と出て、炎が上がる
           id: 'flame_rain',
-          name: '蒼炎の雨',
+          name: '蒼炎散華',
           weight: 2,
           range: 200,
           minPhase: 2,
@@ -183,8 +186,9 @@ const list: EnemyDef[] = [
           scatter: { count: 5, radius: 56, interval: 0.25 },
         },
         {
+          // 森鳴りの咆哮：自分の周りの大きな円
           id: 'howl',
-          name: '咆哮',
+          name: '森鳴りの咆哮',
           weight: 1,
           range: 60,
           minPhase: 2,
@@ -855,6 +859,404 @@ const list: EnemyDef[] = [
       ],
     },
   },
+  // ---------------------------------------------------------------- 第4章 終焉王国（これまでより強い）
+  {
+    id: 'fallen_soldier',
+    name: '亡国兵',
+    sprite: 'fallen_soldier',
+    ai: 'melee',
+    hp: 120,
+    atk: 19,
+    def: 14,
+    moveSpeed: 38,
+    aggroRange: 120,
+    attackRange: 20,
+    // 剣の扇2連撃。HP が減ると盾を構える
+    attack: {
+      shape: { type: 'cone', radius: 32, angle: 110 },
+      windup: 0.55,
+      repeat: 2,
+      repeatWindups: [0.55, 0.4],
+      lunge: 120,
+      recover: 0.15,
+    },
+    recover: 0.7,
+    bodyRadius: 6,
+    exp: 24,
+    guard: { hpRatio: 0.4, duration: 4, reduction: 0.6 },
+  },
+  {
+    id: 'black_knight',
+    name: '黒騎士',
+    sprite: 'black_knight',
+    ai: 'melee',
+    hp: 300,
+    atk: 28,
+    def: 18,
+    moveSpeed: 30,
+    aggroRange: 120,
+    attackRange: 30,
+    // 大剣で前方を大きく薙ぐ（広い扇・高威力）
+    attack: { shape: { type: 'cone', radius: 50, angle: 140 }, windup: 0.9, power: 1.6, lunge: 90 },
+    recover: 1.0,
+    bodyRadius: 7,
+    exp: 45,
+    heavy: true,
+    dropRate: 1.5,
+  },
+  {
+    id: 'kingdom_mage',
+    name: '魔導兵',
+    sprite: 'kingdom_mage',
+    ai: 'melee',
+    hp: 80,
+    atk: 18,
+    def: 6,
+    moveSpeed: 22,
+    aggroRange: 140,
+    attackRange: 120,
+    // 魔法弾を2発。3回に1回は足元とその周りに範囲魔法
+    attack: {
+      shape: { type: 'cone', radius: 130, angle: 20 },
+      windup: 0.7,
+      projectile: { sprite: 'fx_orb', speed: 150, distance: 130, count: 2, spread: 14, hitRadius: 4 },
+    },
+    altAttack: {
+      every: 3,
+      attack: {
+        shape: { type: 'circle', radius: 20 },
+        windup: 1.0,
+        at: 'target',
+        scatter: { count: 3, radius: 30, interval: 0.2 },
+        effect: 'flame',
+      },
+    },
+    recover: 1.0,
+    bodyRadius: 6,
+    exp: 22,
+  },
+  {
+    id: 'nightmare_hound',
+    name: 'ナイトメアハウンド',
+    sprite: 'nightmare_hound',
+    ai: 'melee',
+    hp: 60,
+    atk: 17,
+    def: 4,
+    moveSpeed: 88,
+    aggroRange: 150,
+    attackRange: 54,
+    // 高速で近づき、直線の突進（群れで出る）
+    attack: { shape: { type: 'line', length: 62, width: 12 }, windup: 0.45, lunge: 340, lungeTime: 0.16, contact: 1.0 },
+    recover: 0.8,
+    bodyRadius: 6,
+    exp: 14,
+    pack: { min: 2, max: 3 },
+  },
+  {
+    id: 'demons_rider',
+    name: 'デモンズライダー',
+    sprite: 'demons_rider',
+    ai: 'melee',
+    hp: 110,
+    atk: 23,
+    def: 10,
+    moveSpeed: 62,
+    aggroRange: 170,
+    attackRange: 120,
+    // 道路を猛スピードで突進。走った跡は短い間、危険な炎の道になる
+    attack: {
+      shape: { type: 'line', length: 150, width: 18 },
+      windup: 0.6,
+      repeat: 2,
+      lunge: 460,
+      lungeTime: 0.32,
+      contact: 1.3,
+      trail: { duration: 2.5, radius: 10, power: 0.25, tick: 0.4 },
+      recover: 0.3,
+    },
+    recover: 0.9,
+    bodyRadius: 7,
+    exp: 30,
+    heavy: true,
+  },
+  {
+    // エリート：空を飛ぶ竜騎士。遠くから炎、2回に1回は地上へ急降下
+    id: 'dragon_knight',
+    name: 'ドラゴンナイト',
+    sprite: 'dragon_knight',
+    ai: 'melee',
+    hp: 420,
+    atk: 28,
+    def: 16,
+    moveSpeed: 42,
+    aggroRange: 180,
+    attackRange: 110,
+    attack: { shape: { type: 'line', length: 120, width: 22 }, windup: 0.9, power: 1.4, effect: 'flame' },
+    altAttack: {
+      every: 2,
+      attack: { shape: { type: 'circle', radius: 30 }, windup: 1.0, at: 'target', power: 1.8, leap: true, leapTime: 0.15, effect: 'meteor' },
+    },
+    recover: 0.9,
+    bodyRadius: 8,
+    exp: 80,
+    dropRate: 2.5,
+    hover: true,
+  },
+  {
+    // レアモンスター。過去のループを覚えている
+    id: 'rinne_knight',
+    name: '輪廻の騎士',
+    sprite: 'rinne_knight',
+    ai: 'melee',
+    hp: 520,
+    atk: 28,
+    def: 18,
+    moveSpeed: 46,
+    aggroRange: 170,
+    attackRange: 56,
+    attack: {
+      shape: { type: 'line', length: 76, width: 18 },
+      windup: 0.55,
+      repeat: 3,
+      repeatWindups: [0.55, 0.4, 0.4],
+      lunge: 380,
+      lungeTime: 0.2,
+      contact: 1.3,
+      recover: 0.15,
+    },
+    recover: 0.9,
+    bodyRadius: 7,
+    exp: 200,
+    dropRate: 3,
+    guard: { hpRatio: 0.3, duration: 5, reduction: 0.5 },
+    barks: ['また来たか。', '……今回も、同じ結末か。'],
+    guaranteedLoot: { count: 2, minRarity: 'rare' },
+    rareDrop: { baseId: 'rinne_shard', chance: 0.25, rarity: 'legendary' },
+  },
+
+  // ---------------------------------------------------------------- 第4章ボス
+  {
+    id: 'chronos',
+    name: '輪廻王クロノス',
+    sprite: 'chronos',
+    ai: 'boss',
+    hp: 1150,
+    atk: 34,
+    def: 12,
+    moveSpeed: 44,
+    aggroRange: 400,
+    attackRange: 70,
+    attack: { shape: { type: 'cone', radius: 70, angle: 120 }, windup: 1.0 },
+    recover: 0.8,
+    bodyRadius: 12,
+    exp: 1200,
+    heavy: true,
+    aura: 'clock',
+    boss: {
+      // HP 70% / 40% / 20% でフェーズ 2 / 3 / 4
+      phases: [0.7, 0.4, 0.2],
+      interval: 0.9,
+      intervalByPhase: [1, 0.9, 0.65, 0.45],
+      // HP20%以下になったら必ず終焉時計
+      forcedOnPhase: { 4: 'doom_clock' },
+      loot: { count: 5, minRarity: 'rare' },
+      deathEffects: ['meteor', 'crystal'],
+      patterns: [
+        // ---- フェーズ1（HP100〜70%）から
+        {
+          // 時断：剣を振り、前方を大きく斬る
+          id: 'time_slash',
+          name: '時断',
+          weight: 3,
+          range: 110,
+          shape: { type: 'cone', radius: 72, angle: 130 },
+          windup: 1.0,
+          power: 2.2,
+          recover: 0.7,
+        },
+        {
+          // クロノス・レイ：プレイヤーの方向へ長い直線
+          id: 'chronos_ray',
+          name: 'クロノス・レイ',
+          weight: 2,
+          range: 999,
+          shape: { type: 'line', length: 260, width: 20 },
+          windup: 0.9,
+          power: 2.0,
+          effect: 'flame',
+          recover: 0.6,
+        },
+        {
+          // 時間爆発：プレイヤーの位置に円を4連続（毎回その時点の位置を狙う）
+          id: 'time_bomb',
+          name: '時間爆発',
+          weight: 2,
+          range: 999,
+          shape: { type: 'circle', radius: 24 },
+          at: 'target',
+          windup: 1.0,
+          repeat: 4,
+          repeatWindups: [1.0, 0.8, 0.8, 0.8],
+          power: 1.5,
+          effect: 'meteor',
+          recover: 0.05,
+        },
+        // ---- フェーズ2（HP70〜40%）から
+        {
+          // 時計盤：エリアいっぱいの時計盤。回る針に触れるとダメージ
+          id: 'clock_face',
+          name: '時計盤',
+          weight: 2,
+          range: 999,
+          minPhase: 2,
+          shape: { type: 'circle', radius: 10 },
+          special: 'clockHands',
+          hands: { duration: 6, width: 14, speeds: [0.9, 0.45] },
+          arenaRadius: 120,
+          windup: 1.4,
+          power: 1.3,
+        },
+        {
+          // 輪廻の鎖：円の中にいると鎖につながれて遅くなり、そこへ追撃
+          id: 'rinne_chains',
+          name: '輪廻の鎖',
+          weight: 2,
+          range: 999,
+          minPhase: 2,
+          shape: { type: 'circle', radius: 10 },
+          special: 'chains',
+          chains: { count: 4, radius: 20, slow: 0.35, slowTime: 2.2, followUp: { type: 'circle', radius: 26 }, followWindup: 0.9 },
+          windup: 1.1,
+          power: 1.6,
+          recover: 0.4,
+        },
+        {
+          // 時間逆行：直前に受けたダメージの一部を巻き戻す
+          id: 'rewind',
+          name: '時間逆行',
+          weight: 1,
+          range: 999,
+          minPhase: 2,
+          shape: { type: 'circle', radius: 10 },
+          special: 'rewind',
+          rewind: { window: 8, ratio: 0.5, max: 0.08 },
+          windup: 1.4,
+          recover: 0.5,
+        },
+        // ---- フェーズ3（HP40〜20%）から
+        {
+          // 過去再演：過去のボスの幻影が、そのボスの技を使う
+          id: 'reenact',
+          name: '過去再演',
+          weight: 2,
+          range: 999,
+          minPhase: 3,
+          maxPhase: 3,
+          shape: { type: 'circle', radius: 10 },
+          special: 'reenact',
+          reenact: {
+            pool: [
+              { boss: 'varg', pattern: 'breath' },
+              { boss: 'gradion', pattern: 'judgement_line' },
+              { boss: 'abyss_dragoon', pattern: 'crystal_rain' },
+              { boss: 'abyss_dragoon', pattern: 'tidal_tail' },
+            ],
+            count: 2,
+            stagger: 0.7,
+          },
+          arenaRadius: 120,
+          windup: 0.6,
+          power: 1.4,
+          recover: 0.6,
+        },
+        {
+          // 時間停止：モノクロになり、足元と周りに予兆。動けるのは少しの間だけ
+          id: 'time_freeze',
+          name: '時間停止',
+          weight: 2,
+          range: 999,
+          minPhase: 3,
+          shape: { type: 'circle', radius: 20 },
+          special: 'timeFreeze',
+          freeze: { count: 5, radius: 20, moveTime: 1.4 },
+          windup: 2.4,
+          power: 2.0,
+          recover: 0.6,
+        },
+        // ---- フェーズ4（HP20%以下）
+        {
+          // 終焉時計：中央の巨大な時計がカウントダウン。0 で安全地帯以外が大爆発
+          id: 'doom_clock',
+          name: '終焉時計',
+          weight: 1,
+          range: 999,
+          minPhase: 4,
+          shape: { type: 'circle', radius: 10 },
+          special: 'doomClock',
+          safeSpots: 2,
+          arenaRadius: 120,
+          windup: 5,
+          power: 4.0,
+          recover: 1.0,
+        },
+        {
+          // 過去再演（全員）：過去のボスの技を組み合わせて使う
+          id: 'reenact_all',
+          name: '過去再演・輪廻',
+          weight: 2,
+          range: 999,
+          minPhase: 4,
+          shape: { type: 'circle', radius: 10 },
+          special: 'reenact',
+          reenact: {
+            pool: [
+              { boss: 'varg', pattern: 'flame_rain' },
+              { boss: 'gradion', pattern: 'cross_slash' },
+              { boss: 'abyss_dragoon', pattern: 'abyss_wave' },
+            ],
+            count: 3,
+            stagger: 0.6,
+          },
+          arenaRadius: 120,
+          windup: 0.6,
+          power: 1.4,
+          recover: 0.6,
+        },
+      ],
+    },
+  },
 ];
+
+/**
+ * 過去の章の敵の強化版（終焉の○○）。第4章で出る。
+ * 少し硬く・強く・速く、溜めが短い。紫がかった色になる
+ */
+const enhanced = (baseId: string, id: string): EnemyDef => {
+  const b = list.find((e) => e.id === baseId)!;
+  const quick = (a: EnemyAttackDef): EnemyAttackDef => ({
+    ...a,
+    windup: a.windup * 0.85,
+    repeatWindups: a.repeatWindups?.map((w) => w * 0.85),
+  });
+  return {
+    ...b,
+    id,
+    name: `終焉の${b.name}`,
+    hp: Math.round(b.hp * 1.3),
+    atk: Math.round(b.atk * 1.15),
+    def: b.def + 4,
+    moveSpeed: Math.round(b.moveSpeed * 1.1),
+    attack: quick(b.attack),
+    exp: Math.round(b.exp * 1.4),
+    tint: 0xc890ff,
+  };
+};
+list.push(
+  enhanced('goblin_rider', 'doom_goblin_rider'),
+  enhanced('armor_goblin', 'doom_armor_goblin'),
+  enhanced('golem', 'doom_golem'),
+  enhanced('sahagin', 'doom_sahagin'),
+);
 
 export const ENEMIES: Record<string, EnemyDef> = Object.fromEntries(list.map((e) => [e.id, e]));

@@ -3,6 +3,9 @@ import type { AreaDef } from '../core/types';
 // エリア定義。exits の char はマップ上の文字。踏むと to のエリアへ移動し、arrive の文字の位置に出る。
 // level は1周目の敵レベル（周回ごとに config/balance.ts の LOOP.levelPerLoop が加わる）
 
+/** エリアに合うシーン（町は Town、それ以外は Field） */
+export const sceneForArea = (areaId: string): 'Town' | 'Field' => (AREAS[areaId]?.type === 'field' ? 'Field' : 'Town');
+
 export const AREAS: Record<string, AreaDef> = {
   // ---------------------------------------------------------------- 第1章
   town: {
@@ -257,6 +260,7 @@ export const AREAS: Record<string, AreaDef> = {
     exits: [
       { char: '^', to: 'ch3_field1', arrive: '@' },
       { char: '<', to: 'ash_city', arrive: 'x' },
+      { char: '>', to: 'fortress_town', arrive: 'w', requires: 'ch3_clear', lockedText: '東の門の先は、深い霧に包まれている。' },
     ],
     npcs: [
       {
@@ -373,5 +377,179 @@ export const AREAS: Record<string, AreaDef> = {
     boss: { id: 'abyss_dragoon', marker: 'B' },
     // 記憶の結晶：ボスを倒すと、倒した場所に現れる
     objects: [{ id: 'memory_crystal', sprite: 'memory_crystal', marker: 'z', hidden: true, hideWhen: 'memory_after' }],
+  },
+
+  // ---------------------------------------------------------------- 第4章 終焉王国
+  fortress_town: {
+    id: 'fortress_town',
+    chapter: 4,
+    name: '城塞都市エンデ',
+    type: 'town',
+    map: 'fortress_town',
+    floor: 'Z',
+    border: 'Y',
+    level: 18,
+    maxEnemies: 0,
+    enemies: [],
+    // クロノスを倒すと、世界の時間が止まる
+    frozenWhen: 'ch4_boss',
+    exits: [
+      { char: '^', to: 'ch4_field1', arrive: '@' },
+      { char: '<', to: 'port_town', arrive: 'x' },
+    ],
+    objects: [{ id: 'crystal_altar', sprite: 'crystal_altar', marker: 'P', solid: true }],
+    npcs: [
+      {
+        id: 'fortress_garage',
+        name: 'ガレージ',
+        sprite: 'npc_garage',
+        marker: 'g',
+        action: 'jobChange',
+        lines: [{ s: 'ガレージの店主', t: 'いつもの乗り換えだね。……ああ、「いつもの」って言っちゃいけないんだっけ。' }],
+      },
+      {
+        id: 'fortress_mechanic',
+        name: '整備士',
+        sprite: 'npc_mechanic',
+        marker: 'm',
+        action: 'upgrade',
+        lines: [{ s: '整備士', t: 'その車の整備なら慣れたもんさ。何百回とやったからね。' }],
+      },
+      {
+        id: 'rinne_elder',
+        name: '老人',
+        sprite: 'npc_elder',
+        marker: 'v',
+        action: 'talk',
+        lines: [{ s: '老人', t: '王国へ行け。答えは、いつもそこにある。……答えを覚えていられるかは、別じゃがな。' }],
+      },
+      {
+        id: 'guard',
+        name: '門番',
+        sprite: 'npc_guard',
+        marker: 'k',
+        action: 'talk',
+        lines: [{ s: '門番', t: '北の門を出れば終焉街道だ。……道は覚えてるだろ？' }],
+      },
+      {
+        id: 'scholar',
+        name: '学者',
+        sprite: 'npc_scholar',
+        marker: 'a',
+        action: 'talk',
+        lines: [{ s: '学者', t: '終焉王は、時を操るという。……時を戻せる者に、終わりはあるのだろうか。' }],
+      },
+      {
+        id: 'lady',
+        name: '婦人',
+        sprite: 'npc_lady',
+        marker: 'c',
+        action: 'talk',
+        lines: [{ s: '婦人', t: 'あなたが来ると、なぜか懐かしい気持ちになるのよ。' }],
+      },
+      {
+        id: 'fortress_kid',
+        name: '子ども',
+        sprite: 'npc_kid',
+        marker: 'h',
+        action: 'talk',
+        lines: [{ s: '子ども', t: 'FIT のお兄ちゃん、また王さまに会いに行くの？' }],
+      },
+    ],
+  },
+  ch4_field1: {
+    id: 'ch4_field1',
+    chapter: 4,
+    name: '終焉街道',
+    type: 'field',
+    map: 'ch4_field1',
+    floor: 'A',
+    border: 'X',
+    level: 18,
+    maxEnemies: 16,
+    frozenWhen: 'ch4_boss',
+    enemies: [
+      { id: 'fallen_soldier', weight: 4 },
+      { id: 'nightmare_hound', weight: 2 },
+      { id: 'demons_rider', weight: 3 },
+      { id: 'kingdom_mage', weight: 2 },
+      { id: 'doom_goblin_rider', weight: 2 },
+      { id: 'doom_armor_goblin', weight: 2 },
+      { id: 'black_knight', weight: 1 },
+      { id: 'rinne_knight', weight: 0.4 },
+    ],
+    exits: [
+      { char: '_', to: 'fortress_town', arrive: 's' },
+      { char: '^', to: 'ch4_field2', arrive: '@' },
+    ],
+    objects: [
+      { id: 'road_wreck', sprite: 'car_rust', marker: 'W', solid: true },
+      { id: 'statue', sprite: 'soldier_statue', marker: 'S', solid: true },
+      { id: 'mural_loop1', sprite: 'mural', marker: 'M', solid: true },
+      { id: 'record_1', sprite: 'record_stone', marker: 'E', solid: true },
+      { id: 'chest', sprite: 'chest', marker: 'y', loot: { minRarity: 'rare' } },
+    ],
+  },
+  ch4_field2: {
+    id: 'ch4_field2',
+    chapter: 4,
+    name: '終焉王国',
+    type: 'field',
+    map: 'ch4_field2',
+    floor: 'Z',
+    border: 'Y',
+    level: 20,
+    maxEnemies: 16,
+    frozenWhen: 'ch4_boss',
+    enemies: [
+      { id: 'fallen_soldier', weight: 3 },
+      { id: 'black_knight', weight: 2 },
+      { id: 'kingdom_mage', weight: 3 },
+      { id: 'nightmare_hound', weight: 1 },
+      { id: 'dragon_knight', weight: 1 },
+      { id: 'doom_golem', weight: 1 },
+      { id: 'doom_sahagin', weight: 2 },
+      { id: 'rinne_knight', weight: 0.5 },
+    ],
+    exits: [
+      { char: '_', to: 'ch4_field1', arrive: 'n' },
+      { char: '^', to: 'ch4_boss', arrive: '@' },
+    ],
+    objects: [
+      { id: 'statue_royal', sprite: 'soldier_statue', marker: 'S', solid: true },
+      { id: 'mural_loop2', sprite: 'mural', marker: 'M', solid: true },
+      { id: 'record_2', sprite: 'record_stone', marker: 'E', solid: true },
+      { id: 'chest', sprite: 'chest', marker: 'y', loot: { minRarity: 'rare' } },
+    ],
+  },
+  ch4_boss: {
+    id: 'ch4_boss',
+    chapter: 4,
+    name: '玉座の間',
+    type: 'field',
+    map: 'ch4_boss',
+    floor: 'Z',
+    border: 'Y',
+    level: 22,
+    maxEnemies: 0,
+    enemies: [],
+    exits: [{ char: '_', to: 'ch4_field2', arrive: 'b' }],
+    boss: { id: 'chronos', marker: 'B' },
+  },
+
+  // ---------------------------------------------------------------- 最終章 世界の果て（入口）
+  world_end: {
+    id: 'world_end',
+    chapter: 5,
+    name: '世界の果て',
+    type: 'field',
+    map: 'world_end',
+    floor: 'A',
+    border: '0',
+    level: 24,
+    maxEnemies: 0,
+    enemies: [],
+    exits: [],
+    objects: [{ id: 'road_end', sprite: 'road_end', marker: 'E', solid: true }],
   },
 };
