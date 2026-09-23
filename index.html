@@ -78,6 +78,36 @@
     <div id="safe-probe"></div>
     <div id="game"></div>
     <div id="rotate">端末を縦向きにしてください</div>
+    <div id="boot-error"></div>
+    <script>
+      // 読み込みに失敗したとき、真っ黒な画面のままにせず原因と再読み込みボタンを出す
+      (function () {
+        var shown = false;
+        function show(msg) {
+          if (shown) return;
+          shown = true;
+          var el = document.getElementById('boot-error');
+          el.style.cssText =
+            'position:fixed;inset:0;z-index:20;background:#1a1c2c;color:#f4f4f4;padding:calc(env(safe-area-inset-top) + 24px) 20px 20px;font:14px/1.6 sans-serif;overflow:auto';
+          el.innerHTML =
+            '<p style="color:#ffd23f;font-size:16px">読み込み中にエラーが起きました</p>' +
+            '<p style="word-break:break-all;color:#94b0c2">' + String(msg).replace(/</g, '&lt;') + '</p>' +
+            '<p><button id="boot-reload" style="font-size:16px;padding:10px 16px">再読み込み（キャッシュを使わない）</button></p>';
+          document.getElementById('boot-reload').onclick = function () {
+            location.replace(location.pathname + '?r=' + Date.now());
+          };
+        }
+        window.addEventListener('error', function (e) {
+          show((e.message || 'エラー') + (e.filename ? ' @ ' + e.filename + ':' + e.lineno : ''));
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          show(e.reason && e.reason.message ? e.reason.message : String(e.reason));
+        });
+        setTimeout(function () {
+          if (!window.__gameStarted) show('10秒たってもゲームが始まりませんでした');
+        }, 10000);
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

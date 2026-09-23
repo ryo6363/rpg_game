@@ -90,3 +90,6 @@ if (import.meta.env.DEV) {
     __debug: { gameState, EventBus, GameEvents, InputState, HudState, createItem },
   });
 }
+
+// 読み込み成功の印（index.html の読み込みエラー表示が使う）
+(window as unknown as { __gameStarted: boolean }).__gameStarted = true;
