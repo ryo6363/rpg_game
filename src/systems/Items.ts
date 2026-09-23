@@ -57,6 +57,8 @@ export function createItem(baseId: string, rarity: Rarity, itemLevel: number): I
   if (rarity === 'magic' && affixes[0]) name = AFFIXES[affixes[0].id].prefix + base.name;
   if (rarity === 'rare') name = `${pick(RARE_TITLES)}・${base.name}`;
   if (rarity === 'legendary') name = pick(LEGENDARY_TITLES) + base.name;
+  // イベント専用の品は固有の名前のまま
+  if (base.unique) name = base.name;
 
   return { uid: newUid(), baseId, rarity, itemLevel, name, stats, affixes, upgrade: 0 };
 }

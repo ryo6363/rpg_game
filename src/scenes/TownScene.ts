@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { TOWN } from '../config/balance';
-import { EventBus, GameEvents } from '../core/EventBus';
 import { HudState } from '../core/HudState';
 import type { NpcDef } from '../core/types';
 import { InputState } from '../input/InputState';
@@ -82,9 +81,18 @@ export class TownScene extends WorldScene {
     return best;
   }
 
+  /**
+   * 話しかける。ストーリーイベントがあればそれを、なければいつもの台詞を再生する。
+   * いつもの台詞のあとは NPC のメニュー（ジョブ選択・強化）を開く
+   */
   private interact(def: NpcDef) {
-    for (const line of def.lines) EventBus.emit(GameEvents.Toast, `${def.name}「${line}」`, '#f4f4f4');
-    if (def.action === 'jobChange') openOverlay(this, 'JobSelect');
-    if (def.action === 'upgrade') openOverlay(this, 'Inventory', { mode: 'upgrade' });
+    const openMenu = () => {
+      if (def.action === 'jobChange') openOverlay(this, 'JobSelect');
+      if (def.action === 'upgrade') openOverlay(this, 'Inventory', { mode: 'upgrade' });
+    };
+    const played = this.playStory({ type: 'talk', npc: def.id }, (last) => {
+      if (last?.then?.type === 'npcMenu') openMenu();
+    });
+    if (!played) this.playLines(def.lines, openMenu);
   }
 }

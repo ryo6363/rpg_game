@@ -27,7 +27,7 @@ export class AoeManager {
   spawn(spec: AoeSpec) {
     // 地面の上・キャラより下に描く
     const g = this.scene.add.graphics().setDepth(-5000);
-    this.list.push({ spec, g, elapsed: 0, flash: 0, done: false });
+    this.list.push({ spec, g, elapsed: -(spec.delay ?? 0), flash: 0, done: false });
   }
 
   update(dt: number) {
@@ -44,11 +44,14 @@ export class AoeManager {
         continue;
       }
       a.elapsed += dt;
+      // 出現待ち
+      if (a.elapsed < 0) continue;
       const p = Math.min(1, a.elapsed / a.spec.duration);
       this.draw(a, p, 0);
       if (p >= 1) {
         a.done = true;
         a.flash = TELEGRAPH.flashTime;
+        if (a.spec.effect) this.world.showAoeEffect(a.spec);
         if (this.contains(a.spec, this.world.player.x, this.world.player.y, this.world.player.radius)) {
           this.world.damagePlayer(a.spec.power, a.spec.x, a.spec.y);
         }
@@ -90,6 +93,36 @@ export class AoeManager {
       case 'line':
         return along >= -r && along <= s.length + r && Math.abs(side) <= s.width / 2 + r;
     }
+  }
+
+  /** 範囲内のランダムな点（炎などの演出用） */
+  static randomPoint(spec: AoeSpec): { x: number; y: number } {
+    const s = spec.shape;
+    const cos = Math.cos(spec.angle);
+    const sin = Math.sin(spec.angle);
+    let along = 0;
+    let side = 0;
+    switch (s.type) {
+      case 'circle': {
+        const r = Math.sqrt(Math.random()) * s.radius;
+        const a = Math.random() * Math.PI * 2;
+        along = (s.offset ?? 0) + Math.cos(a) * r;
+        side = Math.sin(a) * r;
+        break;
+      }
+      case 'cone': {
+        const r = Math.sqrt(Math.random()) * s.radius;
+        const a = Phaser.Math.DegToRad((Math.random() - 0.5) * s.angle);
+        along = Math.cos(a) * r;
+        side = Math.sin(a) * r;
+        break;
+      }
+      case 'line':
+        along = Math.random() * s.length;
+        side = (Math.random() - 0.5) * s.width;
+        break;
+    }
+    return { x: spec.x + along * cos - side * sin, y: spec.y + along * sin + side * cos };
   }
 
   /** progress: 0〜1 の進み具合 / flash: 判定後の光の強さ */

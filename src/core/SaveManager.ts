@@ -4,7 +4,7 @@ import { createNewState, gameState, replaceGameState, type GameStateData } from 
 // MIGRATIONS に「旧バージョン → 次のバージョン」の変換を追加する。
 
 const STORAGE_KEY = 'fitquest_save';
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 interface SaveFile {
   version: number;
@@ -14,7 +14,8 @@ interface SaveFile {
 
 /** MIGRATIONS[n] はバージョン n のデータを n+1 に変換する */
 const MIGRATIONS: Record<number, (data: any) => any> = {
-  // 例: 1: (d) => ({ ...d, newField: 0 }),
+  // v1 → v2: ストーリー進行を追加（既存データは1周目・第1章の最初から）
+  1: (d) => ({ ...d, story: { loop: 1, chapter: 1, flags: [] } }),
 };
 
 let saveTimer = 0;
@@ -53,6 +54,7 @@ export const SaveManager = {
         ...fresh,
         ...data,
         jobs: { ...fresh.jobs, ...data.jobs },
+        story: { ...fresh.story, ...data.story },
         equipment: {
           weapon: { ...fresh.equipment.weapon, ...data.equipment?.weapon },
           armor: { ...fresh.equipment.armor, ...data.equipment?.armor },

@@ -138,3 +138,23 @@ export const TELEGRAPH = {
   flashAlpha: 0.6,
   flashTime: 0.15,
 } as const;
+
+/** 周回（ループ） */
+export const LOOP = {
+  /** 1周ごとに上がる敵レベル（1周目 Lv1〜10、2周目 Lv11〜20 …） */
+  levelPerLoop: 10,
+  /** 1周ごとのレア以上の出やすさの上昇（1周目 1倍、2周目 1.25倍 …） */
+  rarityBonusPerLoop: 0.25,
+} as const;
+
+/** 会話 */
+export const DIALOG = {
+  /** 1秒あたりの文字送り */
+  charsPerSecond: 40,
+} as const;
+
+/** ボス */
+export const BOSS = {
+  /** 撃破演出の長さ（秒） */
+  deathTime: 1.6,
+} as const;

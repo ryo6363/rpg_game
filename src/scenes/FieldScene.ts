@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { ENEMY, LOOT } from '../config/balance';
+import { BOSS, ENEMY, LOOT } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
+import { HudState } from '../core/HudState';
 import type { ItemInstance } from '../core/types';
 import { ENEMIES } from '../data/enemies';
 import { Enemy } from '../entities/Enemy';
@@ -8,8 +9,9 @@ import { LootDrop } from '../entities/LootDrop';
 import { rollDamage } from '../systems/Combat';
 import { addToInventory } from '../systems/Equipment';
 import { weightedPick } from '../systems/Items';
-import { rollDrop } from '../systems/LootGenerator';
+import { createRandomItem, rollDrop } from '../systems/LootGenerator';
 import { gainExp, killExp } from '../systems/Progression';
+import { enemyLevel, hasFlag, rarityBonus, setFlag } from '../systems/Story';
 import { RAINBOW } from '../ui/rarityStyle';
 import { WorldScene, type WorldData } from './WorldScene';
 
@@ -22,6 +24,7 @@ export class FieldScene extends WorldScene {
   private drops: LootDrop[] = [];
   private fullWarnAt = 0;
   private hpBars!: Phaser.GameObjects.Graphics;
+  private boss: Enemy | null = null;
 
   constructor() {
     super('Field');
@@ -33,6 +36,7 @@ export class FieldScene extends WorldScene {
     this.liveEnemies = [];
     this.respawnTimers = [];
     this.drops = [];
+    this.boss = null;
   }
 
   create() {
@@ -48,8 +52,23 @@ export class FieldScene extends WorldScene {
     this.physics.add.collider(this.enemyGroup, this.enemyGroup);
     this.physics.add.collider(this.player, this.enemyGroup);
     for (let i = 0; i < this.area.maxEnemies; i++) this.spawnEnemy(true);
+    this.spawnBoss();
 
     this.hpBars = this.add.graphics().setDepth(99999);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (HudState.boss = null));
+  }
+
+  /** ボスエリアならボスを出す（この周回で倒していなければ） */
+  private spawnBoss() {
+    const b = this.area.boss;
+    if (!b || hasFlag(`defeated_${b.id}`)) return;
+    const pos = this.map.markers.get(b.marker)?.[0];
+    if (!pos) return;
+    const e = new Enemy(this);
+    this.enemies.push(e);
+    this.enemyGroup.add(e);
+    e.spawn(ENEMIES[b.id], pos.x, pos.y, enemyLevel(this.area.level));
+    this.boss = e;
   }
 
   // ------------------------------------------------------------ 敵の出現
@@ -65,7 +84,7 @@ export class FieldScene extends WorldScene {
       if (Math.hypot(pos.x - this.player.x, pos.y - this.player.y) >= minD) break;
     }
     const pick = weightedPick(this.area.enemies, (en) => en.weight)!;
-    e.spawn(ENEMIES[pick.id], pos.x, pos.y, this.area.level);
+    e.spawn(ENEMIES[pick.id], pos.x, pos.y, enemyLevel(this.area.level));
   }
 
   // ------------------------------------------------------------ CombatWorld
@@ -77,17 +96,66 @@ export class FieldScene extends WorldScene {
   damageEnemy(enemy: Enemy, power: number, fromX: number, fromY: number) {
     if (!enemy.alive) return;
     const res = rollDamage(this.player.stats, power, enemy.defense);
-    const died = enemy.applyDamage(res.amount, fromX, fromY);
+    const { died, phaseUp } = enemy.applyDamage(res.amount, fromX, fromY);
     this.floatText.show(enemy.x, enemy.y - 6, `${res.amount}`, res.crit ? '#ffcd75' : '#f4f4f4', res.crit);
     this.sparks.explode(res.crit ? 8 : 4, enemy.x, enemy.y);
+    if (phaseUp) this.playStory({ type: 'bossPhase', boss: enemy.def.id, phase: enemy.phase });
     if (died) {
       this.sparks.explode(12, enemy.x, enemy.y);
-      this.respawnTimers.push(ENEMY.respawnDelay);
       EventBus.emit(GameEvents.EnemyKilled, enemy.def.id, enemy.x, enemy.y);
-      gainExp(killExp(enemy.def.exp, this.area.level));
-      const item = rollDrop({ itemLevel: this.area.level, jobId: this.player.jobId, dropRate: enemy.def.dropRate });
+      gainExp(killExp(enemy.def.exp, enemy.level));
+      if (enemy.isBoss) {
+        this.onBossDefeated(enemy);
+        return;
+      }
+      this.respawnTimers.push(ENEMY.respawnDelay);
+      const item = rollDrop({
+        itemLevel: enemy.level,
+        jobId: this.player.jobId,
+        dropRate: enemy.def.dropRate,
+        rarityBonus: rarityBonus(),
+      });
       if (item) this.spawnDrop(item, enemy.x, enemy.y);
     }
+  }
+
+  /** ボス撃破：消える演出のあと確定ドロップとイベント */
+  private onBossDefeated(boss: Enemy) {
+    const def = boss.def;
+    setFlag(`defeated_${def.id}`);
+    this.cameras.main.flash(400, 255, 255, 255);
+    this.time.addEvent({
+      delay: 120,
+      repeat: Math.floor((BOSS.deathTime * 1000) / 120),
+      callback: () => this.sparks.explode(6, boss.x + (Math.random() - 0.5) * 24, boss.y + (Math.random() - 0.5) * 20),
+    });
+    this.time.delayedCall(BOSS.deathTime * 1000, () => {
+      const loot = def.boss!.loot;
+      for (let i = 0; i < loot.count; i++) {
+        const item = createRandomItem(
+          { itemLevel: boss.level, jobId: this.player.jobId, rarityBonus: rarityBonus() },
+          loot.minRarity,
+        );
+        if (item) this.spawnDrop(item, boss.x, boss.y);
+      }
+      this.boss = null;
+      this.playStory({ type: 'bossDefeated', boss: def.id });
+    });
+  }
+
+  private lockWarnAt = 0;
+
+  protected canLeave(): boolean {
+    if (!this.boss?.alive) return true;
+    if (this.time.now > this.lockWarnAt) {
+      EventBus.emit(GameEvents.Toast, '強い気配に阻まれて、ここから出られない！', '#ef7d57');
+      this.lockWarnAt = this.time.now + 2500;
+    }
+    return false;
+  }
+
+  protected dropStoryItem(item: ItemInstance) {
+    this.spawnDrop(item, this.player.x, this.player.y - 20);
   }
 
   // ------------------------------------------------------------ ドロップ
@@ -147,13 +215,15 @@ export class FieldScene extends WorldScene {
 
     this.updatePickup();
     this.drawHpBars();
+    const b = this.boss;
+    HudState.boss = b && b.alive ? { name: b.def.name, hp: b.hp, maxHp: b.maxHp } : null;
   }
 
   private drawHpBars() {
     const g = this.hpBars;
     g.clear();
     for (const e of this.liveEnemies) {
-      if (e.hp >= e.maxHp) continue;
+      if (e.hp >= e.maxHp || e.isBoss) continue;
       const w = 12;
       const x = Math.round(e.x - w / 2);
       const y = Math.round(e.y - 10);

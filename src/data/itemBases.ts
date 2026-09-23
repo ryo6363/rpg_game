@@ -23,6 +23,9 @@ const list: ItemBaseDef[] = [
   { id: 'tire_spike', name: 'スパイクタイヤ', slot: 'feet', icon: 'icon_tire', stats: { def: 2, moveSpeed: 5 }, minLevel: 3 },
   { id: 'charm_safety', name: '交通安全のお守り', slot: 'accessory', icon: 'icon_charm', stats: { maxHp: 10 }, minLevel: 1 },
   { id: 'navi_old', name: '古いカーナビ', slot: 'accessory', icon: 'icon_navi', stats: { critRate: 0.02 }, minLevel: 1 },
+
+  // ---- イベント専用（ランダムドロップには出ない）
+  { id: 'varg_fang', name: 'ヴァルグの骨牙', slot: 'accessory', icon: 'icon_fang', stats: { atk: 6, critDamage: 0.2 }, minLevel: 1, unique: true },
 ];
 
 export const ITEM_BASES: Record<string, ItemBaseDef> = Object.fromEntries(list.map((b) => [b.id, b]));

@@ -34,6 +34,17 @@ export function buildAreaMap(scene: Phaser.Scene, area: AreaDef): BuiltMap {
   ];
 
   const charToIndex = new Map(TILE_TYPES.map((t, i) => [t.char, i]));
+  if (import.meta.env.DEV) {
+    // 目印の文字がタイルの文字と重なると、目印ではなくタイルとして描かれてしまう
+    const markerChars = [
+      ...(area.npcs ?? []).map((n) => n.marker),
+      ...(area.objects ?? []).map((o) => o.marker),
+      ...(area.boss ? [area.boss.marker] : []),
+    ];
+    for (const ch of markerChars) {
+      if (charToIndex.has(ch)) console.warn(`[map] ${area.id}: 目印の文字 '${ch}' はタイルの文字と重なっています`);
+    }
+  }
   const floorIndex = charToIndex.get(area.floor) ?? 0;
   const gateIndex = charToIndex.get('#')!;
   const exitChars = new Map(area.exits.map((e) => [e.char, e]));

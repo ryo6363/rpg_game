@@ -6,9 +6,12 @@ import { InputState } from '../input/InputState';
 
 /** 今動いているフィールド／町のシーンキー（各シーンが create で登録する） */
 export const WORLD_SCENE_KEY = 'worldScene';
+/** 全画面メニューが開いているか（UIScene が作り直されたときに自分を隠すため） */
+export const OVERLAY_OPEN_KEY = 'overlayOpen';
 
 export function openOverlay(from: Phaser.Scene, key: string, data?: object) {
   InputState.reset();
+  from.registry.set(OVERLAY_OPEN_KEY, true);
   const world = from.registry.get(WORLD_SCENE_KEY) as string | undefined;
   if (world) from.scene.pause(world);
   from.scene.launch(key, data);
@@ -18,6 +21,7 @@ export function openOverlay(from: Phaser.Scene, key: string, data?: object) {
 
 export function closeOverlay(overlay: Phaser.Scene) {
   const world = overlay.registry.get(WORLD_SCENE_KEY) as string | undefined;
+  overlay.registry.set(OVERLAY_OPEN_KEY, false);
   overlay.scene.stop();
   if (world) overlay.scene.resume(world);
   overlay.scene.wake('UI');

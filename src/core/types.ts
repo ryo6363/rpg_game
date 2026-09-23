@@ -98,7 +98,8 @@ export interface JobDef {
   skills: { id: string; unlockLevel: number }[];
 }
 
-export type EnemyAiKind = 'melee';
+/** 敵AIの種類。melee = 近づいて攻撃（移動速度0なら固定砲台）/ boss = 攻撃パターンから選ぶ */
+export type EnemyAiKind = 'melee' | 'boss';
 
 /**
  * 予兆範囲（AoE）の形。向きは攻撃開始時の敵→プレイヤー方向
@@ -120,6 +121,40 @@ export interface EnemyAttackDef {
   power?: number;
   /** 判定の瞬間に向きの方向へ飛び出す速さ（体当たり） */
   lunge?: number;
+  /** 飛び出している時間（秒。省略時 0.12） */
+  lungeTime?: number;
+  /** 範囲の基点。self = 自分の位置（既定）/ target = 攻撃開始時のプレイヤーの位置 */
+  at?: 'self' | 'target';
+  /** 判定の瞬間の演出（flame = 範囲いっぱいに炎が上がる） */
+  effect?: AoeEffect;
+}
+
+/** 予兆範囲の判定時の演出 */
+export type AoeEffect = 'flame';
+
+/** ボスの攻撃パターン */
+export interface BossPatternDef extends EnemyAttackDef {
+  id: string;
+  name: string;
+  /** 選ばれやすさ */
+  weight: number;
+  /** プレイヤーがこの距離以内のときだけ使う */
+  range: number;
+  /** このフェーズ以上で使う（1 始まり） */
+  minPhase?: number;
+  /** 判定の瞬間に範囲の中心へ跳ぶ */
+  leap?: boolean;
+  /** 跳ぶ時間（秒。省略時 0.2） */
+  leapTime?: number;
+  /** 同じ攻撃を続けて何回出すか（毎回狙い直す。暴れ回りなど） */
+  repeat?: number;
+  /**
+   * プレイヤーの周りのランダムな位置に円の予兆を count 個、interval 秒ずつずらして出す。
+   * radius は散らばる範囲（1個目はプレイヤーの足元）
+   */
+  scatter?: { count: number; radius: number; interval: number };
+  /** 攻撃後の硬直（省略時は敵の recover） */
+  recover?: number;
 }
 
 export interface EnemyDef {
@@ -143,6 +178,20 @@ export interface EnemyDef {
   exp: number;
   /** ドロップ率の倍率（省略時 1） */
   dropRate?: number;
+  /** ノックバックしない（重い敵・固定砲台） */
+  heavy?: boolean;
+
+  /** ---- ボスのみ */
+  boss?: {
+    /** 攻撃パターン */
+    patterns: BossPatternDef[];
+    /** フェーズが上がる HP の割合（例 [0.5] → 50% 以下でフェーズ2） */
+    phases: number[];
+    /** 攻撃と攻撃の間の最短時間 */
+    interval: number;
+    /** 確定ドロップ */
+    loot: { count: number; minRarity: Rarity };
+  };
 }
 
 /** 町の NPC */
@@ -152,10 +201,20 @@ export interface NpcDef {
   sprite: string;
   /** マップ上の位置を表す文字（data/maps.ts） */
   marker: string;
-  /** 話しかけたときの動作 */
+  /** 話しかけたときの動作（会話のあとに開くメニュー） */
   action: 'jobChange' | 'upgrade' | 'talk';
-  /** 話しかけたときのひとこと */
-  lines: string[];
+  /** ストーリーイベントがないときの会話 */
+  lines: DialogLine[];
+}
+
+/** フィールドに置く調べられる物（近づくと自動でイベント） */
+export interface AreaObjectDef {
+  id: string;
+  sprite: string;
+  marker: string;
+  /** この周回数の範囲でだけ置く */
+  minLoop?: number;
+  maxLoop?: number;
 }
 
 /** エリア間の出入口 */
@@ -180,6 +239,62 @@ export interface AreaDef {
   enemies: { id: string; weight: number }[];
   exits: ExitDef[];
   npcs?: NpcDef[];
+  objects?: AreaObjectDef[];
+  /** ボスエリアならボスの敵 id と出現位置の文字 */
+  boss?: { id: string; marker: string };
+}
+
+// ---------------------------------------------------------------- ストーリー
+
+/** 会話の1行。s = 話者（省略でナレーション） */
+export interface DialogLine {
+  s?: string;
+  t: string;
+  /** この周回数の範囲でだけ表示 */
+  minLoop?: number;
+  maxLoop?: number;
+}
+
+/** イベントのきっかけ */
+export type StoryTrigger =
+  | { type: 'areaEnter'; area: string }
+  | { type: 'talk'; npc: string }
+  | { type: 'touch'; object: string }
+  | { type: 'bossPhase'; boss: string; phase: number }
+  | { type: 'bossDefeated'; boss: string };
+
+/** ストーリーイベント。条件を満たすきっかけが起きたら会話を再生し、フラグを立てる */
+export interface StoryEventDef {
+  id: string;
+  trigger: StoryTrigger;
+  /** すべて立っていること */
+  requires?: string[];
+  /** どれも立っていないこと（省略時は自分の id。つまり1周に1回） */
+  unless?: string[];
+  minLoop?: number;
+  maxLoop?: number;
+  lines: DialogLine[];
+  /** 会話のあとに立てるフラグ（自分の id は自動で立つ） */
+  setFlags?: string[];
+  /** 会話のあとの動作 */
+  then?:
+    | { type: 'chapterClear' }
+    | { type: 'goTo'; area: string; arrive?: string }
+    | { type: 'dropItem'; baseId: string; rarity: Rarity }
+    | { type: 'npcMenu' };
+}
+
+/** 章 */
+export interface ChapterDef {
+  id: number;
+  title: string;
+  subtitle: string;
+  /** 次の章（なければ最終章。クリアで周回へ） */
+  next?: number;
+  /** false ならまだ遊べない（準備中） */
+  available: boolean;
+  /** 章の最初に入るエリア */
+  startArea: string;
 }
 
 // ---------------------------------------------------------------- 装備
@@ -201,6 +316,8 @@ export interface ItemBaseDef {
   stats: Partial<Stats>;
   /** このアイテムレベル以上でドロップする */
   minLevel: number;
+  /** true ならランダムドロップに出ない（イベント専用） */
+  unique?: boolean;
 }
 
 /** 追加効果の定義。data/affixes.ts */

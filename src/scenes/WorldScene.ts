@@ -4,7 +4,7 @@ import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { HudState } from '../core/HudState';
 import { SaveManager } from '../core/SaveManager';
-import type { AreaDef, ExitDef } from '../core/types';
+import type { AreaDef, DialogLine, ExitDef, ItemInstance, StoryEventDef, StoryTrigger } from '../core/types';
 import { viewport } from '../core/Viewport';
 import { AREAS } from '../data/areas';
 import type { Enemy } from '../entities/Enemy';
@@ -15,8 +15,11 @@ import { ProjectileManager } from '../entities/ProjectileManager';
 import { InputState } from '../input/InputState';
 import { rollDamage } from '../systems/Combat';
 import type { AoeSpec, CombatWorld, ProjectileSpec } from '../systems/CombatWorld';
+import { addToInventory } from '../systems/Equipment';
+import { createItem } from '../systems/Items';
 import { buildAreaMap, type BuiltMap } from '../systems/MapBuilder';
-import { WORLD_SCENE_KEY } from '../ui/overlay';
+import { completeEvent, currentLoop, enemyLevel, findEvent, linesForLoop } from '../systems/Story';
+import { OVERLAY_OPEN_KEY, openOverlay, WORLD_SCENE_KEY } from '../ui/overlay';
 
 export interface WorldData {
   areaId: string;
@@ -105,14 +108,99 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
 
     // 全画面メニューを閉じたときに戻る先として登録
     this.registry.set(WORLD_SCENE_KEY, this.scene.key);
+    this.registry.set(OVERLAY_OPEN_KEY, false);
     if (this.scene.isActive('UI') || this.scene.isSleeping('UI')) this.scene.get('UI').scene.restart();
     else this.scene.launch('UI');
     this.scene.bringToTop('UI');
-    // UIScene の create が終わってから初期値を通知する
+    this.createObjects();
+
+    // UIScene の create が終わってから初期値を通知し、エリアに入ったときのイベントを起こす
     this.time.delayedCall(0, () => {
       this.emitHp();
       EventBus.emit(GameEvents.Toast, this.area.name, '#f4f4f4');
     });
+    // 画面が明るくなりきってから、エリアに入ったときのイベント
+    cam.once(Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE, () => {
+      this.playStory({ type: 'areaEnter', area: this.area.id });
+    });
+  }
+
+  // ------------------------------------------------------------ ストーリー
+
+  /** 調べられる物（近づくと自動でイベント） */
+  private objects: { id: string; img: Phaser.GameObjects.Image; touched: boolean }[] = [];
+
+  private createObjects() {
+    this.objects = [];
+    const loop = currentLoop();
+    for (const def of this.area.objects ?? []) {
+      if ((def.minLoop ?? 1) > loop || loop > (def.maxLoop ?? Infinity)) continue;
+      const pos = this.map.markers.get(def.marker)?.[0];
+      if (!pos) continue;
+      const img = this.add.image(pos.x, pos.y, def.sprite, 0).setDepth(pos.y);
+      this.add.image(pos.x, pos.y + 6, 'shadow_wide', 0).setAlpha(0.3).setDepth(pos.y - 1);
+      this.objects.push({ id: def.id, img, touched: false });
+    }
+  }
+
+  private updateObjects() {
+    for (const o of this.objects) {
+      if (o.touched) continue;
+      if (Math.hypot(o.img.x - this.player.x, o.img.y - this.player.y) < 20) {
+        o.touched = true;
+        this.playStory({ type: 'touch', object: o.id });
+      }
+    }
+  }
+
+  /**
+   * きっかけに合うストーリーイベントを再生する。
+   * 同じきっかけで続けて起こるイベントがあれば順に再生し、最後に onDone を呼ぶ。
+   * 何も起きなければ false（onDone は呼ばない）
+   */
+  playStory(trigger: StoryTrigger, onDone?: (last?: StoryEventDef) => void, played = new Set<string>()): boolean {
+    const ev = findEvent(trigger);
+    // 同じ連鎖の中で同じイベントは2回再生しない（何度でも起きるイベント対策）
+    if (!ev || played.has(ev.id)) return false;
+    played.add(ev.id);
+    this.playLines(ev.lines, () => {
+      completeEvent(ev);
+      this.runThen(ev, () => {
+        if (!this.playStory(trigger, onDone, played)) onDone?.(ev);
+      });
+    });
+    return true;
+  }
+
+  /** 会話を再生（フィールド／町は止まる） */
+  playLines(lines: DialogLine[], onDone?: () => void) {
+    const filtered = linesForLoop(lines);
+    if (filtered.length === 0) {
+      onDone?.();
+      return;
+    }
+    openOverlay(this, 'Dialog', { lines: filtered, onComplete: onDone });
+  }
+
+  private runThen(ev: StoryEventDef, next: () => void) {
+    const then = ev.then;
+    if (!then || then.type === 'npcMenu') return next();
+    switch (then.type) {
+      case 'chapterClear':
+        openOverlay(this, 'ChapterClear', { chapter: gameState.story.chapter });
+        return;
+      case 'goTo':
+        this.goToArea(then.area, then.arrive);
+        return;
+      case 'dropItem':
+        this.dropStoryItem(createItem(then.baseId, then.rarity, enemyLevel(this.area.level)));
+        return next();
+    }
+  }
+
+  /** イベントで手に入る装備（フィールドでは足元に落とす） */
+  protected dropStoryItem(item: ItemInstance) {
+    if (addToInventory(item)) EventBus.emit(GameEvents.ItemPickedUp, item);
   }
 
   /** 各シーンの update から呼ぶ */
@@ -123,21 +211,33 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.player.updatePlayer(dt, this);
     this.projectiles.update(dt);
     this.aoes.update(dt);
+    if (!this.leaving && !this.player.dead) this.updateObjects();
     if (!this.leaving && !this.player.dead) {
       const exit = this.map.exitAt(this.player.x, this.player.y);
-      if (exit) this.goTo(exit);
+      if (exit && this.canLeave()) this.goTo(exit);
     }
   }
 
-  /** 別のエリアへ移動 */
+  /** 出入口から出られるか（ボス戦中は出られない） */
+  protected canLeave(): boolean {
+    return true;
+  }
+
+  /** 出入口を踏んだ */
   protected goTo(exit: ExitDef) {
+    this.goToArea(exit.to, exit.arrive);
+  }
+
+  /** 別のエリアへ移動 */
+  goToArea(areaId: string, arrive?: string) {
+    if (this.leaving) return;
     this.leaving = true;
     InputState.reset();
     SaveManager.save();
-    const target = AREAS[exit.to];
+    const target = AREAS[areaId];
     this.cameras.main.fadeOut(250);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.start(target.type === 'town' ? 'Town' : 'Field', { areaId: target.id, arrive: exit.arrive });
+      this.scene.start(target.type === 'town' ? 'Town' : 'Field', { areaId: target.id, arrive });
     });
   }
 
@@ -181,6 +281,37 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
 
   spawnProjectile(spec: ProjectileSpec) {
     this.projectiles.spawn(spec);
+  }
+
+  showAoeEffect(spec: AoeSpec) {
+    if (spec.effect !== 'flame') return;
+    // 範囲の広さに合わせた数の炎を、範囲内のランダムな位置に立ち上らせる
+    const s = spec.shape;
+    const area =
+      s.type === 'circle' ? Math.PI * s.radius ** 2 : s.type === 'line' ? s.length * s.width : (Math.PI * s.radius ** 2 * s.angle) / 360;
+    const count = Phaser.Math.Clamp(Math.round(area / 70), 6, 28);
+    for (let i = 0; i < count; i++) {
+      const p = AoeManager.randomPoint(spec);
+      const scale = 1 + Math.random() * 0.6;
+      const flame = this.add
+        .sprite(Math.round(p.x), Math.round(p.y), 'fx_flame', 0)
+        .setOrigin(0.5, 1)
+        .setScale(scale)
+        .setAlpha(0)
+        .setDepth(p.y + 5)
+        .play('fx_flame_burn');
+      flame.anims.setProgress(Math.random());
+      this.tweens.add({
+        targets: flame,
+        alpha: { from: 1, to: 0 },
+        y: p.y - 8 - Math.random() * 6,
+        scaleX: scale * 0.6,
+        delay: Math.random() * 120,
+        duration: 380 + Math.random() * 260,
+        ease: 'Quad.easeIn',
+        onComplete: () => flame.destroy(),
+      });
+    }
   }
 
   showBlast(x: number, y: number, radius: number, color: number) {

@@ -1,8 +1,11 @@
 import type { EnemyDef } from '../core/types';
 
 // 敵定義。ai の種類ごとの動きは systems/EnemyAI.ts
-export const ENEMIES: Record<string, EnemyDef> = {
-  slime: {
+// attack.shape が予兆範囲（AoE）の形。溜め時間 windup のあいだに範囲から出れば避けられる
+
+const list: EnemyDef[] = [
+  // ---------------------------------------------------------------- 第1章 はじまりの森
+  {
     id: 'slime',
     name: 'スライム',
     sprite: 'slime',
@@ -19,4 +22,180 @@ export const ENEMIES: Record<string, EnemyDef> = {
     bodyRadius: 6,
     exp: 5,
   },
-};
+  {
+    id: 'wolf',
+    name: 'ウルフ',
+    sprite: 'wolf',
+    ai: 'melee',
+    hp: 26,
+    atk: 8,
+    def: 1,
+    moveSpeed: 58,
+    aggroRange: 120,
+    attackRange: 14,
+    // すばやく近づいて噛みつき（前方の扇）
+    attack: { shape: { type: 'cone', radius: 24, angle: 100 }, windup: 0.6, lunge: 110 },
+    recover: 0.5,
+    bodyRadius: 6,
+    exp: 6,
+  },
+  {
+    id: 'goblin_rider',
+    name: 'ゴブリンライダー',
+    sprite: 'goblin_rider',
+    ai: 'melee',
+    hp: 40,
+    atk: 12,
+    def: 4,
+    moveSpeed: 34,
+    aggroRange: 130,
+    attackRange: 64,
+    // 遠くから長い直線の突進
+    attack: { shape: { type: 'line', length: 84, width: 16 }, windup: 1.0, lunge: 280, lungeTime: 0.28 },
+    recover: 0.9,
+    bodyRadius: 7,
+    exp: 9,
+  },
+  {
+    id: 'poison_flower',
+    name: 'ポイズンフラワー',
+    sprite: 'poison_flower',
+    ai: 'melee',
+    hp: 30,
+    atk: 10,
+    def: 2,
+    moveSpeed: 0,
+    aggroRange: 100,
+    attackRange: 96,
+    // 動かずに、プレイヤーの足元へ毒の円
+    attack: { shape: { type: 'circle', radius: 18 }, windup: 1.1, at: 'target' },
+    recover: 1.2,
+    bodyRadius: 6,
+    exp: 7,
+    heavy: true,
+  },
+  {
+    id: 'treant',
+    name: 'トレント',
+    sprite: 'treant',
+    ai: 'melee',
+    hp: 110,
+    atk: 16,
+    def: 8,
+    moveSpeed: 22,
+    aggroRange: 80,
+    attackRange: 16,
+    // 周囲を叩きつける大きな円
+    attack: { shape: { type: 'circle', radius: 30 }, windup: 1.2 },
+    recover: 1.0,
+    bodyRadius: 7,
+    exp: 18,
+    heavy: true,
+    dropRate: 1.5,
+  },
+
+  // ---------------------------------------------------------------- 第1章ボス
+  {
+    id: 'varg',
+    name: '森喰らいのヴァルグ',
+    sprite: 'varg',
+    ai: 'boss',
+    hp: 700,
+    atk: 30,
+    def: 6,
+    moveSpeed: 55,
+    aggroRange: 400,
+    attackRange: 40,
+    attack: { shape: { type: 'cone', radius: 34, angle: 100 }, windup: 0.6 },
+    recover: 0.5,
+    bodyRadius: 12,
+    exp: 200,
+    heavy: true,
+    boss: {
+      phases: [0.5],
+      interval: 0.45,
+      loot: { count: 3, minRarity: 'rare' },
+      patterns: [
+        // ---- フェーズ1から
+        {
+          id: 'bite',
+          name: '噛みつき',
+          weight: 3,
+          range: 42,
+          shape: { type: 'cone', radius: 36, angle: 110 },
+          windup: 0.6,
+          power: 1.2,
+          lunge: 110,
+        },
+        {
+          id: 'breath',
+          name: '蒼炎ブレス',
+          weight: 2,
+          range: 120,
+          shape: { type: 'line', length: 120, width: 24 },
+          windup: 0.9,
+          power: 1.5,
+          recover: 0.8,
+          effect: 'flame',
+        },
+        // ---- フェーズ2（HP 50% 以下）から
+        {
+          id: 'pounce',
+          name: '跳びかかり',
+          weight: 3,
+          range: 140,
+          minPhase: 2,
+          shape: { type: 'circle', radius: 28 },
+          at: 'target',
+          windup: 0.6,
+          power: 1.8,
+          leap: true,
+          leapTime: 0.12,
+          recover: 0.4,
+        },
+        {
+          // 暴れ回り：狙い直しながら直線の突進を4連続
+          id: 'rampage',
+          name: '暴れ回り',
+          weight: 2,
+          range: 160,
+          minPhase: 2,
+          shape: { type: 'line', length: 70, width: 22 },
+          windup: 0.45,
+          power: 1.3,
+          lunge: 320,
+          lungeTime: 0.2,
+          recover: 0.12,
+          repeat: 4,
+        },
+        {
+          // 蒼炎の雨：プレイヤーの周りに円の予兆が時間差で次々と出て、炎が上がる
+          id: 'flame_rain',
+          name: '蒼炎の雨',
+          weight: 2,
+          range: 200,
+          minPhase: 2,
+          shape: { type: 'circle', radius: 20 },
+          windup: 0.8,
+          power: 1.4,
+          recover: 0.6,
+          effect: 'flame',
+          scatter: { count: 5, radius: 56, interval: 0.25 },
+        },
+        {
+          id: 'howl',
+          name: '咆哮',
+          weight: 1,
+          range: 60,
+          minPhase: 2,
+          shape: { type: 'circle', radius: 48 },
+          windup: 1.1,
+          power: 1.4,
+          recover: 0.9,
+        },
+      ],
+    },
+  },
+];
+
+export const ENEMIES: Record<string, EnemyDef> = Object.fromEntries(list.map((e) => [e.id, e]));

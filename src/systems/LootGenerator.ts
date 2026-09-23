@@ -29,9 +29,13 @@ export function rollRarity(rarityBonus = 1): Rarity {
 /** ドロップしなければ null */
 export function rollDrop(ctx: DropContext): ItemInstance | null {
   if (Math.random() >= LOOT.dropChance * (ctx.dropRate ?? 1)) return null;
+  return createRandomItem(ctx);
+}
 
+/** ランダムな装備を1つ作る。minRarity 未満のレアリティは引き直す（ボスの確定ドロップ用） */
+export function createRandomItem(ctx: DropContext, minRarity: Rarity = 'normal'): ItemInstance | null {
   const slot = weightedPick(Object.keys(LOOT.slotWeights) as Slot[], (s) => LOOT.slotWeights[s])!;
-  let candidates = Object.values(ITEM_BASES).filter((b) => b.slot === slot && b.minLevel <= ctx.itemLevel);
+  let candidates = Object.values(ITEM_BASES).filter((b) => b.slot === slot && !b.unique && b.minLevel <= ctx.itemLevel);
   if (slot === 'weapon' && Math.random() < LOOT.currentJobWeaponChance) {
     const wt = JOBS[ctx.jobId].weaponType;
     const own = candidates.filter((b) => b.weaponType === wt);
@@ -40,5 +44,8 @@ export function rollDrop(ctx: DropContext): ItemInstance | null {
   // 高レベルのベースほど少し出やすく
   const base = weightedPick(candidates, (b) => 1 + b.minLevel * 0.5);
   if (!base) return null;
-  return createItem(base.id, rollRarity(ctx.rarityBonus), ctx.itemLevel);
+  let rarity = rollRarity(ctx.rarityBonus);
+  const order: Rarity[] = ['normal', 'magic', 'rare', 'legendary'];
+  if (order.indexOf(rarity) < order.indexOf(minRarity)) rarity = minRarity;
+  return createItem(base.id, rarity, ctx.itemLevel);
 }

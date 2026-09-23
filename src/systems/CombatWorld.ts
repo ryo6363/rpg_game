@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import type { AoeShape } from '../core/types';
+import type { AoeEffect, AoeShape } from '../core/types';
 import type { Enemy } from '../entities/Enemy';
 import type { Player } from '../entities/Player';
 
@@ -33,6 +33,10 @@ export interface AoeSpec {
   power: number;
   /** 使い手。倒れたら攻撃は中止される */
   owner?: { readonly alive: boolean };
+  /** 予兆を出すまでの待ち時間（秒） */
+  delay?: number;
+  /** 判定の瞬間の演出 */
+  effect?: AoeEffect;
 }
 
 /** スキルや敵AIがフィールドに対して行える操作（FieldScene / TownScene が実装する） */
@@ -48,6 +52,8 @@ export interface CombatWorld {
   spawnProjectile(spec: ProjectileSpec): void;
   /** 敵の攻撃の予兆範囲を出す（判定は時間経過で自動） */
   spawnAoe(spec: AoeSpec): void;
+  /** 予兆範囲の判定時の演出（炎など） */
+  showAoeEffect(spec: AoeSpec): void;
   /** 爆発などの円形エフェクト */
   showBlast(x: number, y: number, radius: number, color: number): void;
   isWall(x: number, y: number): boolean;

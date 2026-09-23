@@ -16,4 +16,6 @@ export const HudState = {
   attackEnabled: true,
   /** スキルボタンが使えるか（町では使えない） */
   skillsEnabled: true,
+  /** 戦闘中のボス（HP バーを出す） */
+  boss: null as { name: string; hp: number; maxHp: number } | null,
 };

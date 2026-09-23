@@ -10,7 +10,7 @@ import { ActionButtons } from '../input/ActionButtons';
 import { InputState } from '../input/InputState';
 import { VirtualStick } from '../input/VirtualStick';
 import { expToNext } from '../systems/Progression';
-import { openOverlay } from '../ui/overlay';
+import { OVERLAY_OPEN_KEY, openOverlay } from '../ui/overlay';
 import { applyColor, rarityTextColor } from '../ui/rarityStyle';
 import { createText } from '../ui/text';
 
@@ -27,6 +27,9 @@ export class UIScene extends Phaser.Scene {
   private bagButton = { x: 0, y: 0, r: 0 };
   private toasts: Phaser.GameObjects.Text[] = [];
   private toastY = 0;
+  private bossName!: Phaser.GameObjects.Text;
+  private bossBar!: Phaser.GameObjects.Graphics;
+  private bossBarWidth = 0;
   private fpsText?: Phaser.GameObjects.Text;
   /** 再起動（画面サイズ変更）後も表示を保つため static */
   private static hp = { cur: 1, max: 1 };
@@ -57,7 +60,12 @@ export class UIScene extends Phaser.Scene {
     this.bagButton = { x: W - safe.right - 14, y: hudY + 18, r: 11 };
     this.add.circle(this.bagButton.x, this.bagButton.y, 10, 0x1a1c2c, 0.6).setStrokeStyle(1, 0xf4f4f4, 0.6);
     this.add.image(this.bagButton.x, this.bagButton.y, 'icon_bag', 0);
-    this.toastY = hudY + 30;
+    this.toastY = hudY + 50;
+
+    // ボスの HP バー（ボス戦のときだけ）
+    this.bossName = createText(this, hudX, hudY + 29, '', 6, '#ffd23f', { stroke: '#1a1c2c', strokeThickness: 2 });
+    this.bossBar = this.add.graphics().setPosition(hudX, hudY + 38);
+    this.bossBarWidth = W - safe.left - safe.right - 12;
 
     // ---- 操作系
     const bottom = H - safe.bottom;
@@ -167,6 +175,8 @@ export class UIScene extends Phaser.Scene {
     // インベントリから戻ったら操作系を初期状態に作り直す
     this.events.once(Phaser.Scenes.Events.WAKE, () => this.scene.restart());
     this.drawHp();
+    // 作り直した時点で別のメニューが開いていたら隠れる（会話 → メニューと続けて開いたとき）
+    if (this.registry.get(OVERLAY_OPEN_KEY)) this.time.delayedCall(0, () => this.scene.sleep());
   }
 
   private openInventory() {
@@ -228,6 +238,25 @@ export class UIScene extends Phaser.Scene {
     });
   }
 
+  private drawBossBar() {
+    const b = HudState.boss;
+    this.bossName.setVisible(!!b);
+    this.bossBar.clear();
+    if (!b) return;
+    this.bossName.setText(b.name);
+    const w = this.bossBarWidth;
+    const ratio = Phaser.Math.Clamp(b.hp / b.maxHp, 0, 1);
+    this.bossBar
+      .fillStyle(0x1a1c2c, 0.85)
+      .fillRect(-1, -1, w + 2, 6)
+      .fillStyle(0x333c57, 1)
+      .fillRect(0, 0, w, 4)
+      .fillStyle(0xb13e53, 1)
+      .fillRect(0, 0, Math.round(w * ratio), 4)
+      .fillStyle(0xef7d57, 1)
+      .fillRect(0, 0, Math.round(w * ratio), 1);
+  }
+
   private drawHp() {
     const w = 64;
     const ratio = Phaser.Math.Clamp(UIScene.hp.cur / UIScene.hp.max, 0, 1);
@@ -261,6 +290,7 @@ export class UIScene extends Phaser.Scene {
     InputState.attackHeld = this.buttons.isHeld(this.attackIndex) || k.J.isDown || k.SPACE.isDown;
 
     this.syncSkillButtons();
+    this.drawBossBar();
     this.buttons.draw();
     if (this.fpsText) this.fpsText.setText(`${Math.round(this.game.loop.actualFps)}fps`);
   }

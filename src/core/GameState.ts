@@ -9,6 +9,15 @@ export interface JobProgress {
   exp: number;
 }
 
+export interface StoryProgress {
+  /** 周回数（1 始まり） */
+  loop: number;
+  /** 今の章 */
+  chapter: number;
+  /** この周回で立ったフラグ（周回が変わると消える） */
+  flags: string[];
+}
+
 export interface GameStateData {
   currentJob: JobId;
   jobs: Record<JobId, JobProgress>;
@@ -21,6 +30,7 @@ export interface GameStateData {
     /** 防具・お守りは全ジョブ共通 */
     armor: Record<ArmorSlot, ItemInstance | null>;
   };
+  story: StoryProgress;
 }
 
 export function createNewState(): GameStateData {
@@ -38,6 +48,7 @@ export function createNewState(): GameStateData {
       weapon: { warrior: starter('warrior'), mage: starter('mage'), hunter: starter('hunter') },
       armor: { head: null, body: null, hands: null, feet: null, accessory: null },
     },
+    story: { loop: 1, chapter: 1, flags: [] },
   };
 }
 

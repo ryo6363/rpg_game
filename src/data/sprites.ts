@@ -111,7 +111,207 @@ const personSprite = (key: string, hair: string, cloth: string, pants: string): 
   frames: [PERSON.map((r) => r.replace(/H/g, hair).replace(/C/g, cloth).replace(/D/g, pants))],
 });
 
+/** 行の長さを幅にそろえる（手描きの数え間違い対策） */
+const fit = (rows: string[], w: number) => rows.map((r) => r.padEnd(w, '.').slice(0, w));
+
+// ---- 第1章の敵
+const WOLF_TOP = [
+  '................',
+  '................',
+  '................',
+  '..........k..k..',
+  '.........kmkkmk.',
+  '.........kmmmmsk',
+  'k.......kmmrmmmk',
+  'mk..kkkkmmmmmskk',
+  '.mkkmmmmmmmmmk..',
+  '..kmmmmmmmmmmk..',
+  '..kdmmmmmmmmdk..',
+  '..kddkkkkkkddk..',
+];
+const GOBLIN_TOP = [
+  '................',
+  '......kkk.......',
+  '.....kgggk......',
+  '....kgkggk......',
+  '....kggggkk.....',
+  '.....krrk.ks....',
+  '....krrrrkss....',
+  '...kuukrrkuuk...',
+  '..kuuuuuuuuuuk..',
+  '.kuuuuuuuuuuuwk.',
+  '.kQuuuuuuuuuukk.',
+  '..kuuuuuuuuuk...',
+];
+const FLOWER_BOTTOM = [
+  '..kvvpkyykpvvk..',
+  '..kvpkyyyykpvk..',
+  '...kpkyyyykpk...',
+  '....kkpppkk.....',
+  '......kgk.......',
+  '...kk.kgk.kk....',
+  '..kgggkgkgggk...',
+  '...kkgggggkk....',
+  '.....kgggk......',
+  '....kkkkkkk.....',
+  '................',
+];
+const TREANT_TOP = [
+  '....kkkkkkk.....',
+  '..kkJgggJJJkk...',
+  '.kJggglgJJJJJk..',
+  'kJgglllggJJJJJk.',
+  'kJJgggggJJJJJJk.',
+  '.kJJJJJJJJJJJk..',
+  '..kkkuuuuukkk...',
+  '....kuykuyk.....',
+  '....kuuuuuk.....',
+  '...kuukkkuuk....',
+  '..kuukuuuukuuk..',
+  '.kuk.kuuuuk.kuk.',
+  '.kk..kuuuuk..kk.',
+  '....kuukkuuk....',
+];
+
+// ---- 第1章ボス「森喰らいのヴァルグ」（32x24、右向き）
+const VARG_TOP = [
+  '................................',
+  '......................w.....w...',
+  '.....................ws....ws...',
+  '.....................sw...sw....',
+  '......................sk.sk.....',
+  '.....................kddkddk....',
+  '....................kddddddk....',
+  '...................kddnddadk....',
+  '..................kdddddddddkk..',
+  '..k..............kddddddddddwwk.',
+  '.kdk...kkkkkkkkkkddddddddddkkwk.',
+  '.kdnkkkdddddddddddddddddddkaak..',
+  '..kdnddddddnddddnddddddddk.ac...',
+  '...kddddddddddddddddddddk..a....',
+  '...kdnddddddddddddddddddk.......',
+  '....kddddddddddddddddddk........',
+  '....kddnddddddddddnddddk........',
+  '....kddkkkddddddddkkdddk........',
+];
+
 export const CHARACTER_SPRITES: PixelSprite[] = [
+  {
+    key: 'wolf',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 6 }],
+    frames: [
+      fit([...WOLF_TOP, '..kdk.....kdk...', '..kdk.....kdk...', '..kk......kk....', '................'], 16),
+      fit([...WOLF_TOP, '...kdk...kdk....', '...kdk...kdk....', '....kk....kk....', '................'], 16),
+    ],
+  },
+  {
+    key: 'goblin_rider',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 5 }],
+    frames: [
+      fit([...GOBLIN_TOP, '..kQk.....kQk...', '..kk.......kk...', '................', '................'], 16),
+      fit([...GOBLIN_TOP, '...kQk...kQk....', '...kk.....kk....', '................', '................'], 16),
+    ],
+  },
+  {
+    key: 'poison_flower',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 2 }],
+    frames: [
+      fit(['................', '................', '.....kk..kk.....', '....kvvkkvvk....', '...kvvvppvvvk...', ...FLOWER_BOTTOM], 16),
+      fit(['................', '................', '................', '.....kvvvvk.....', '...kvvvppvvvk...', ...FLOWER_BOTTOM], 16),
+    ],
+  },
+  {
+    key: 'treant',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 2 }],
+    frames: [
+      fit([...TREANT_TOP, '...kuuk..kuuk...', '...kkk....kkk...'], 16),
+      fit([...TREANT_TOP, '....kuk..kuk....', '....kkk..kkk....'], 16),
+    ],
+  },
+  {
+    key: 'varg',
+    width: 32,
+    height: 24,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 4 }],
+    frames: [
+      fit(
+        [
+          ...VARG_TOP,
+          '....kdk..kddk..kddk.kddk........',
+          '....kdk..kdk....kdk..kdk........',
+          '....kdk..kdk....kdk..kdk........',
+          '...kssk.kssk...kssk.kssk........',
+          '................................',
+          '................................',
+        ],
+        32,
+      ),
+      fit(
+        [
+          ...VARG_TOP,
+          '.....kdk.kddk...kddkkddk........',
+          '.....kdk..kdk...kdk.kdk.........',
+          '.....kdk..kdk...kdk.kdk.........',
+          '....kssk.kssk..kssk.kssk........',
+          '................................',
+          '................................',
+        ],
+        32,
+      ),
+    ],
+  },
+  // 旧道に停まっている古い FIT（色あせた灰色・誰も乗っていない）
+  {
+    key: 'car_wreck',
+    width: 16,
+    height: 16,
+    frames: [
+      [
+        '................',
+        '................',
+        '................',
+        '................',
+        '................',
+        '................',
+        '.....kdddk.ka...',
+        '..kkkkdddkkka...',
+        '.kmmmummmmmmmk..',
+        'kmmmmmmmummmmsk.',
+        'kdmmummmmmmmmmk.',
+        'kddddddudddddddk',
+        '..kmmsk...kmmsk.',
+        '..kmssk...kmssk.',
+        '...kkk.....kkk..',
+        '................',
+      ].map((r) => r.padEnd(16, '.').slice(0, 16)),
+    ],
+  },
+  {
+    // 10周目の伏線：錆びたナンバープレート
+    key: 'sign_zero',
+    width: 16,
+    height: 16,
+    frames: [
+      (x, y) => {
+        if (y < 6 || y > 11 || x < 1 || x > 14) return y >= 12 && (x === 4 || x === 11) ? 'u' : '.';
+        if (y === 6 || y === 11 || x === 1 || x === 14) return 'k';
+        // 「ZERO」をぼんやり
+        const text = ['..kkk.kk.kk..k.', '....k.k..k.kk.k', '..kkk.kk.kk..k.'];
+        const row = text[y - 7];
+        if (row && row[x] === 'k') return 'd';
+        return noise(x, y, 31) < 25 ? 'u' : 's';
+      },
+    ],
+  },
+  personSprite('npc_villager', 'u', 'c', 'd'),
   carSprite('car_warrior', 'r', 'p'),
   carSprite('car_mage', 'b', 'n'),
   carSprite('car_hunter', 'g', 't'),
@@ -229,6 +429,24 @@ export const EFFECT_SPRITES: PixelSprite[] = [
         return '.';
       },
     ],
+  },
+  {
+    // 青白い炎（ヴァルグの蒼炎）。3コマで揺らめく
+    key: 'fx_flame',
+    width: 8,
+    height: 10,
+    anims: [{ name: 'burn', frames: [0, 1, 2], frameRate: 12 }],
+    frames: [0, 1, 2].map((f): PixelGen => (x, y) => {
+      // しずく形：下が丸く、上がとがる。コマごとに先端が左右に揺れる
+      const sway = [0, 1, -1][f];
+      const cx = 3.5 + (sway * (9 - y)) / 9;
+      const halfW = y >= 6 ? 3.2 - (y - 6) * 0.35 : 0.5 + y * 0.45;
+      const d = Math.abs(x - cx);
+      if (d > halfW) return '.';
+      if (d < halfW * 0.35 && y > 3) return 'w';
+      if (d < halfW * 0.7) return 'a';
+      return 'c';
+    }),
   },
   {
     // ボウガンの矢（右向き。回転させて使う）
@@ -399,6 +617,20 @@ export const ICON_SPRITES: PixelSprite[] = [
     '.kkkkkkkkkk.',
     '....kmmk....',
     '...kkkkkk...',
+    '............',
+  ]),
+  icon('icon_fang', [
+    '............',
+    '.........ww.',
+    '........wsw.',
+    '.......wsw..',
+    '......wsw...',
+    '.....wsw....',
+    '....wsw.....',
+    '...wsw......',
+    '..wsw.......',
+    '.wsk........',
+    '.kk.........',
     '............',
   ]),
   icon('icon_bag', [

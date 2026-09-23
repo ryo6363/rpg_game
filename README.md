@@ -1,6 +1,7 @@
-# フィットクエスト
+# FIT QUEST（フィットクエスト）
 
-スマホ縦持ち向けのドット絵ハクスラ ARPG（Vite + TypeScript + Phaser 3）。
+「終わりは、いつも始まりだった。」
+古いコンパクトカー「FIT」で世界を走る、スマホ縦持ち向けの周回型ドット絵ハクスラ ARPG（Vite + TypeScript + Phaser 3）。
 
 ## 開発
 
@@ -49,6 +50,8 @@ src/
 │  ├─ sprites.ts       ドット絵（パレット＋ピクセル文字列）※画像差し替えはここ
 │  ├─ tiles.ts / maps.ts / areas.ts
 │  ├─ jobs.ts / skills.ts / enemies.ts
+│  ├─ chapters.ts      章の一覧（準備中の章も含む）
+│  ├─ story/           章ごとのストーリーイベントと台詞
 ├─ core/               状態・画面サイズ・テクスチャ生成・イベント
 ├─ systems/            ダメージ計算・スキル実行・敵AI・ステータス計算
 ├─ entities/           Player / Enemy / ダメージ数字
@@ -67,5 +70,9 @@ src/
 - **スキルを増やす**: `data/skills.ts` に定義。新しい種類（弾・範囲など）は `systems/SkillRunner.ts` に処理を追加
 - **スキルを装備で強化**: 各ジョブのスキルに「威力 +x%」の追加効果が自動で作られる（`data/affixes.ts`）
 - **マップ**: `data/maps.ts` に文字列で描く（文字の意味は `data/tiles.ts`）。タイル以外の文字は目印（出現位置・NPC の位置）
+- **ストーリー**: `data/story/chapterN.ts` にイベント（きっかけ・条件・台詞・その後の動作）を書き、`data/story/index.ts` に並べる。台詞は `minLoop` / `maxLoop` で周回ごとに変えられる
+- **章を増やす**: `data/chapters.ts` の `available` を true にし、エリア・ストーリーを追加する。最終章（`next` なし）をクリアすると周回に入る
+- **ボス**: `data/enemies.ts` で `ai: 'boss'` にし、`boss.patterns`（攻撃パターン）と `phases`（フェーズが変わる HP の割合）を書く。`data/areas.ts` の `boss` で出現位置を指定
+- **調べる物**: `data/areas.ts` の `objects` に置き、ストーリーの `touch` イベントで台詞を付ける
 - **エリア・出入口**: `data/areas.ts` の `exits` に「踏む文字・行き先・出現位置の文字」を書く
 - **町の NPC**: `data/areas.ts` の `npcs` に追加（見た目は `data/sprites.ts` の personSprite）
