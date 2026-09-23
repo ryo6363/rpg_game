@@ -7,6 +7,7 @@ import { createItem } from './systems/Items';
 import { updateViewport, viewport } from './core/Viewport';
 import { BootScene } from './scenes/BootScene';
 import { FieldScene } from './scenes/FieldScene';
+import { FlashbackScene } from './scenes/FlashbackScene';
 import { ChapterClearScene } from './scenes/ChapterClearScene';
 import { DebugScene } from './scenes/DebugScene';
 import { DialogScene } from './scenes/DialogScene';
@@ -71,6 +72,7 @@ const game = new Phaser.Game({
     DialogScene,
     ChapterClearScene,
     DebugScene,
+    FlashbackScene,
   ],
 });
 

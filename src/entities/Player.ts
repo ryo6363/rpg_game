@@ -47,6 +47,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private buffs: Buff[] = [];
   private dash: Dash | null = null;
   private trailTimer = 0;
+  /** このフレームに足される速度（渦の引き寄せ） */
+  private pushX = 0;
+  private pushY = 0;
+  /** 吹き飛ばされている間の速度と残り時間（津波・尻尾） */
+  private knock = { vx: 0, vy: 0, t: 0 };
 
   private attackTimer = 0;
   private attackPose = 0;
@@ -114,6 +119,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   revive(x: number, y: number) {
     this.dead = false;
+    this.knock.t = 0;
     this.buffs = [];
     this.recalcStats(true);
     this.setPosition(x, y);
@@ -133,6 +139,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       hit: new Set(),
       color: skill.color ?? 0xffffff,
     };
+  }
+
+  /** このフレームだけ速度を足す（渦の引き寄せなど。毎フレーム呼ぶ） */
+  push(vx: number, vy: number) {
+    this.pushX += vx;
+    this.pushY += vy;
+  }
+
+  /** time 秒間、操作より優先して吹き飛ばす */
+  knockBack(vx: number, vy: number, time: number) {
+    this.knock = { vx, vy, t: time };
   }
 
   addBuff(stats: Partial<Record<StatKey, number>>, duration: number, color: number) {
@@ -164,14 +181,23 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     if (this.dash) {
       this.updateDash(dt, world);
+    } else if (this.knock.t > 0) {
+      // 吹き飛ばされている間は操作できない
+      this.knock.t -= dt;
+      this.body.setVelocity(this.knock.vx, this.knock.vy);
     } else {
-      const speed = this.stats.moveSpeed * (this.attackPose > 0 ? PLAYER.attackMoveMultiplier : 1);
-      this.body.setVelocity(mx * speed, my * speed);
+      // 水の中では遅くなる
+      const water = world.moveMultiplierAt(this.x, this.y);
+      const speed = this.stats.moveSpeed * water * (this.attackPose > 0 ? PLAYER.attackMoveMultiplier : 1);
+      this.body.setVelocity(mx * speed + this.pushX, my * speed + this.pushY);
       if (this.canAttack) {
         this.updateAttack(world);
         this.updateSkills(world);
       }
     }
+
+    this.pushX = 0;
+    this.pushY = 0;
 
     // 見た目
     const lookX = this.dash ? Math.cos(this.dash.angle) : this.attackPose > 0 ? Math.cos(this.attackAngle) : mx;

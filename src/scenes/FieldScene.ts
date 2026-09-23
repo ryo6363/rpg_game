@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { BOSS, ENEMY, LOOT } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { HudState } from '../core/HudState';
-import type { ItemInstance } from '../core/types';
+import type { ItemInstance, Rarity } from '../core/types';
 import { ENEMIES } from '../data/enemies';
 import { Enemy } from '../entities/Enemy';
 import { LootDrop } from '../entities/LootDrop';
@@ -84,7 +84,9 @@ export class FieldScene extends WorldScene {
       if (Math.hypot(pos.x - this.player.x, pos.y - this.player.y) >= minD) break;
     }
     const pick = weightedPick(this.area.enemies, (en) => en.weight)!;
-    e.spawn(ENEMIES[pick.id], pos.x, pos.y, enemyLevel(this.area.level));
+    const def = ENEMIES[pick.id];
+    e.spawn(def, pos.x, pos.y, enemyLevel(this.area.level));
+    if (def.guaranteedLoot && !initial) EventBus.emit(GameEvents.Toast, `……${def.name}の気配がする`, '#c58cff');
   }
 
   // ------------------------------------------------------------ CombatWorld
@@ -96,7 +98,21 @@ export class FieldScene extends WorldScene {
   damageEnemy(enemy: Enemy, power: number, fromX: number, fromY: number) {
     if (!enemy.alive) return;
     const res = rollDamage(this.player.stats, power, enemy.defense);
-    const { died, phaseUp } = enemy.applyDamage(res.amount, fromX, fromY);
+    // 防御姿勢中はダメージが減る
+    res.amount = Math.max(1, Math.round(res.amount * enemy.damageMultiplier));
+    const { died, phaseUp, guardStarted } = enemy.applyDamage(res.amount, fromX, fromY);
+    if (guardStarted) this.showSpeech(enemy.x, enemy.y - 4, '（盾を構えた）');
+    // 戦闘中の台詞（レアモンスターなど）
+    const barks = enemy.def.barks;
+    if (barks && !died) {
+      if (!enemy.barked.hit) {
+        enemy.barked.hit = true;
+        this.showSpeech(enemy.x, enemy.y - 4, barks[0]);
+      } else if (!enemy.barked.half && barks[1] && enemy.hp / enemy.maxHp <= 0.5) {
+        enemy.barked.half = true;
+        this.showSpeech(enemy.x, enemy.y - 4, barks[1]);
+      }
+    }
     this.floatText.show(enemy.x, enemy.y - 6, `${res.amount}`, res.crit ? '#ffcd75' : '#f4f4f4', res.crit);
     this.sparks.explode(res.crit ? 8 : 4, enemy.x, enemy.y);
     // ボスに最初の一撃を当てたとき・フェーズが変わったときの台詞
@@ -121,12 +137,19 @@ export class FieldScene extends WorldScene {
         rarityBonus: rarityBonus(),
       });
       if (item) this.spawnDrop(item, enemy.x, enemy.y);
+      // レアモンスターの確定ドロップ
+      const gl = enemy.def.guaranteedLoot;
+      for (let i = 0; gl && i < gl.count; i++) {
+        const extra = createRandomItem({ itemLevel: enemy.level, jobId: this.player.jobId, rarityBonus: rarityBonus() }, gl.minRarity);
+        if (extra) this.spawnDrop(extra, enemy.x, enemy.y);
+      }
     }
   }
 
   /** ボス撃破：消える演出のあと確定ドロップとイベント */
   private onBossDefeated(boss: Enemy) {
     const def = boss.def;
+    this.lastBossPos = { x: boss.x, y: boss.y };
     setFlag(`defeated_${def.id}`);
     this.cameras.main.flash(400, 255, 255, 255);
     this.time.addEvent({
@@ -134,6 +157,25 @@ export class FieldScene extends WorldScene {
       repeat: Math.floor((BOSS.deathTime * 1000) / 120),
       callback: () => this.sparks.explode(6, boss.x + (Math.random() - 0.5) * 24, boss.y + (Math.random() - 0.5) * 20),
     });
+    // 体が崩れていく演出（水しぶき・水晶のかけら）
+    const fx = def.boss!.deathEffects;
+    if (fx?.length) {
+      this.cameras.main.shake(BOSS.deathTime * 1000, 0.006);
+      this.time.addEvent({
+        delay: 200,
+        repeat: Math.floor((BOSS.deathTime * 1000) / 200),
+        callback: () =>
+          this.showAoeEffect({
+            x: boss.x + (Math.random() - 0.5) * 36,
+            y: boss.y + (Math.random() - 0.5) * 28,
+            angle: 0,
+            shape: { type: 'circle', radius: 10 + Math.random() * 10 },
+            duration: 0,
+            power: 0,
+            effect: fx[Math.floor(Math.random() * fx.length)],
+          }),
+      });
+    }
     this.time.delayedCall(BOSS.deathTime * 1000, () => {
       const loot = def.boss!.loot;
       for (let i = 0; i < loot.count; i++) {
@@ -157,6 +199,12 @@ export class FieldScene extends WorldScene {
       this.lockWarnAt = this.time.now + 2500;
     }
     return false;
+  }
+
+  protected dropLootAt(x: number, y: number, minRarity: Rarity) {
+    const item = createRandomItem({ itemLevel: enemyLevel(this.area.level), jobId: this.player.jobId, rarityBonus: rarityBonus() }, minRarity);
+    if (item) this.spawnDrop(item, x, y);
+    EventBus.emit(GameEvents.Toast, '宝箱を開けた！', '#ffd23f');
   }
 
   protected dropStoryItem(item: ItemInstance) {
@@ -203,11 +251,12 @@ export class FieldScene extends WorldScene {
   update(_time: number, deltaMs: number) {
     const dt = Math.min(deltaMs, 50) / 1000;
 
+    // 狙える敵（見えない敵は除く）
     this.liveEnemies.length = 0;
-    for (const e of this.enemies) if (e.alive) this.liveEnemies.push(e);
+    for (const e of this.enemies) if (e.alive && !e.hidden) this.liveEnemies.push(e);
 
     this.updateWorld(dt);
-    for (const e of this.liveEnemies) e.updateEnemy(dt, this);
+    for (const e of this.enemies) if (e.alive) e.updateEnemy(dt, this);
 
     // 再出現
     for (let i = this.respawnTimers.length - 1; i >= 0; i--) {

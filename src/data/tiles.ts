@@ -5,6 +5,8 @@ export interface TileType {
   char: string;
   name: string;
   collide: boolean;
+  /** 入ると移動が遅くなる（浅瀬） */
+  slow?: boolean;
 }
 
 export const TILE_TYPES: TileType[] = [
@@ -29,6 +31,12 @@ export const TILE_TYPES: TileType[] = [
   { char: 'L', name: 'lane', collide: false },
   { char: 'I', name: 'guardrail', collide: true },
   { char: 'X', name: 'debris', collide: true },
+  // 沈没都市・潮見の港
+  { char: '%', name: 'shallow', collide: false, slow: true },
+  { char: '&', name: 'sunken_road', collide: false },
+  { char: '!', name: 'ruin', collide: true },
+  { char: '+', name: 'crystal', collide: true },
+  { char: '|', name: 'pier', collide: false },
   /** 出入口。エリア定義の exits の文字もこのタイルで描く */
   { char: '#', name: 'gate', collide: false },
 ];

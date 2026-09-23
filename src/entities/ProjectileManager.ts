@@ -56,6 +56,14 @@ export class ProjectileManager {
   update(dt: number) {
     for (const p of this.list) {
       if (!p.active) continue;
+      if (p.spec.curve) {
+        // 渦を巻くように曲がる
+        const a = p.spec.curve * dt;
+        const c = Math.cos(a);
+        const sn = Math.sin(a);
+        [p.vx, p.vy] = [p.vx * c - p.vy * sn, p.vx * sn + p.vy * c];
+        p.img.setRotation(Math.atan2(p.vy, p.vx));
+      }
       const step = Math.hypot(p.vx, p.vy) * dt;
       p.img.x += p.vx * dt;
       p.img.y += p.vy * dt;

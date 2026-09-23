@@ -706,6 +706,273 @@ export const EFFECT_SPRITES: PixelSprite[] = [
   },
 ];
 
+// ---------------------------------------------------------------- 第3章 沈んだ世界
+
+/** 文字の色を置き換える（色違いの敵を作る） */
+const recolor = (rows: string[], map: Record<string, string>) =>
+  rows.map((r) => [...r].map((ch) => map[ch] ?? ch).join(''));
+
+const SAHAGIN = [
+  '................',
+  '....kkkk........',
+  '...kttttk..k....',
+  '..kttatttk.s....',
+  '..ktttttk..s....',
+  '..kgtttk...s....',
+  '...kkttkk..s....',
+  '..kttggttk.s....',
+  '.kttgggttkks....',
+  '.ktkgggktkss....',
+  '..kkgggkk..s....',
+  '...ktttk...s....',
+];
+const CRAB = [
+  '................',
+  '................',
+  '.....a....a.....',
+  '....aca..aca....',
+  '...kacakkacak...',
+  '..kmmmmmmmmmmk..',
+  '.kmsmwmmmwmsmk..',
+  'kkmmmmmmmmmmmkk.',
+  'kmkmmmmmmmmmkmk.',
+  '.k.kmmmmmmmmk.k.',
+  '...kkmkkmkkmk...',
+  '....k..k..k.....',
+];
+const WRAITH = [
+  '................',
+  '.....kkkk.......',
+  '....kaaaak......',
+  '...kawaawak.....',
+  '...kaaaaaak.....',
+  '..kacaaaacak....',
+  '..kaaaaaaaak....',
+  '.kcaaccaacaak...',
+  '.kaaaaaaaaaak...',
+  '..kcaakkaacak...',
+];
+const SOLDIER = [
+  '................',
+  '.....kkkk.......',
+  '....kmmmmk......',
+  '....kmnnmk......',
+  '....kmmmmk..k...',
+  '...kkmmmmkkksk..',
+  '..kmgmmmmgmksk..',
+  '..kmmmgmmmmksk..',
+  '..kbkmmmmkmkk...',
+  '...kkmmmmkk.....',
+  '....kmmmmk......',
+];
+const WORM = [
+  '................',
+  '................',
+  '......kkkk......',
+  '.....kppppk.....',
+  '....kpwkpwpk....',
+  '....kpppppk.....',
+  '....kvpvpvk.....',
+  '.....kpppk......',
+  '.....kvpvk......',
+  '.....kpppk......',
+  '....kkvpvkk.....',
+  '...kQQkpkQQk....',
+  '..kQQQQQQQQQk...',
+  '..kkkkkkkkkkk...',
+  '................',
+  '................',
+];
+const DRAGOON = [
+  '................................',
+  '................................',
+  '.......................kkkk.....',
+  '......................kbbbbk....',
+  '.............a.......kbbnbbbkk..',
+  '............aca.....kbbbbbbbbbk.',
+  '...........acwca...kbbbwkbbbbbak',
+  '..........acwwwca..kbbbbbbbkkk..',
+  '.........kacwwwcak.kbbbbbk.aa...',
+  '........kkaccwccakkbbbbbk.......',
+  '.......knnkacccakbbbbbbk........',
+  '......knnnnkkakbbbbbbbk.........',
+  '.....knnbnnnnnnbbbbbbk..........',
+  '....knnbbnnnnnnnbbbbk...........',
+  '...knnbbbnnnnnnnnbbk............',
+  '..knnbbbcnnnnnnnnnk.............',
+  '..knbbbccnnnnnnnnnk.............',
+  '.kknbbccnnnnnnnnnnk.............',
+  'kcknbccnnnnnnnnnnk..............',
+  'kcckbbnnnnnnnnnnk...............',
+  '.kcckbbnnnnnnnnk................',
+  '..kcckknnkknnnk.................',
+  '...kcck.knk.knk.................',
+  '....kk..kk..kk..................',
+  '................................',
+  '................................',
+];
+const ABYSS_CRYSTAL_BODY = [
+  '................',
+  '.......kk.......',
+  '......kawk......',
+  '.....kawwak.....',
+  '....kaawwaak....',
+  '....kcaawaak....',
+  '...kccaaaaaak...',
+  '...kcccaaaaak...',
+  '....kccaaaak....',
+  '....kcccaaak....',
+  '.....kccaak.....',
+  '......kcak......',
+  '.......kk.......',
+  '................',
+  '..kvvv....vvvk..',
+  '................',
+];
+
+CHARACTER_SPRITES.push(
+  personSprite('npc_elder', 's', 'p', 'd'),
+  personSprite('npc_fisher', 'u', 't', 'n'),
+  {
+    key: 'aqua_slime',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: (CHARACTER_SPRITES.find((s) => s.key === 'slime')!.frames as string[][]).map((f) =>
+      recolor(f, { g: 'c', l: 'a', t: 'n' }),
+    ),
+  },
+  {
+    key: 'aqua_slime_shooter',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: (CHARACTER_SPRITES.find((s) => s.key === 'slime')!.frames as string[][]).map((f) =>
+      recolor(f, { g: 'b', l: 'a', t: 'n', w: 'y' }),
+    ),
+  },
+  {
+    key: 'sahagin',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 5 }],
+    frames: [
+      fit([...SAHAGIN, '...kt.tk........', '..ktk.ktk.......', '..kk...kk.......', '................'], 16),
+      fit([...SAHAGIN, '...kt.tk........', '...kt..kt.......', '...kk..kk.......', '................'], 16),
+    ],
+  },
+  {
+    key: 'crystal_crab',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: [fit([...CRAB, '', '', '', ''], 16), fit(['', ...CRAB, '', '', ''], 16)],
+  },
+  {
+    key: 'abyss_wraith',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 4 }],
+    frames: [
+      fit([...WRAITH, '..ka..kaak..ak..', '...k...kk...k...', '', '', '', ''], 16),
+      fit([...WRAITH, '..kak.kaak.kak..', '...k..k..k..k...', '', '', '', ''], 16),
+    ],
+  },
+  {
+    key: 'sunken_soldier',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 4 }],
+    frames: [
+      fit([...SOLDIER, '....kmk.kmk.....', '....kdk.kdk.....', '...kkk..kkk.....', '', ''], 16),
+      fit([...SOLDIER, '...kmk..kmk.....', '...kdk..kdk.....', '..kkk...kkk.....', '', ''], 16),
+    ],
+  },
+  {
+    // レアモンスター：黒い水没鎧、赤く光る目
+    key: 'forgotten_knight',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 4 }],
+    frames: [
+      fit(recolor([...SOLDIER, '....kmk.kmk.....', '....kdk.kdk.....', '...kkk..kkk.....', '', ''], { m: 'd', g: 'p', n: 'r', s: 'm', b: 'p' }), 16),
+      fit(recolor([...SOLDIER, '...kmk..kmk.....', '...kdk..kdk.....', '..kkk...kkk.....', '', ''], { m: 'd', g: 'p', n: 'r', s: 'm', b: 'p' }), 16),
+    ],
+  },
+  {
+    key: 'deep_worm',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 4 }],
+    frames: [fit(WORM, 16), fit(['', ...WORM.slice(0, 15)], 16)],
+  },
+  {
+    // 第3章ボス「アビス・ドラグーン」（右向き）。背中の水晶が光る
+    key: 'abyss_dragoon',
+    width: 32,
+    height: 26,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: [fit(DRAGOON, 32), fit(recolor(DRAGOON, { w: 'a', a: 'w' }), 32)],
+  },
+  // 記憶の結晶（ボスを倒すと現れる）
+  { key: 'memory_crystal', width: 16, height: 16, frames: [ABYSS_CRYSTAL_BODY] },
+  {
+    // 宝箱（コマ0 = 閉じている / コマ1 = 開いている）
+    key: 'chest',
+    width: 16,
+    height: 16,
+    frames: [
+      fit(['', '', '', '', '..kkkkkkkkkkk...', '.kuuuuuuuuuuuk..', '.kuQQQQQQQQQuk..', '.kkkkkkykkkkkk..', '.kuuuuukyuuuuk..', '.kuQQQQQQQQQuk..', '.kuuuuuuuuuuuk..', '.kkkkkkkkkkkkk..'], 16),
+      fit(['', '', '..kkkkkkkkkkk...', '.kuQQQQQQQQQuk..', '.kkkkkkkkkkkkk..', '.kyywyyyyywyyk..', '.kkkkkkkkkkkkk..', '.kuuuuuuuuuuuk..', '.kuuuuuuuuuuuk..', '.kuQQQQQQQQQuk..', '.kuuuuuuuuuuuk..', '.kkkkkkkkkkkkk..'], 16),
+    ],
+  },
+  {
+    // 古代壁画：FIT と、それに乗る主人公によく似た人物
+    key: 'mural',
+    width: 32,
+    height: 24,
+    frames: [
+      (x, y) => {
+        if (x === 0 || x === 31 || y === 0 || y === 23) return 'k';
+        if (x === 1 || x === 30 || y === 1 || y === 22) return 'Y';
+        // 描かれた車と人物（主人公の車の絵を拡大して刻んだもの）
+        const cx = Math.floor((x - 8) / 1);
+        const cy = y - 5;
+        const row = CAR_BODY[cy] ?? (cy >= 12 && cy < 16 ? CAR_WHEELS_A[cy - 12] : undefined);
+        if (row && cx >= 0 && cx < 16) {
+          const ch = row[cx];
+          if (ch === 'k') return 'n';
+          if (ch !== '.') return ch === 'X' || ch === 'Z' ? 'b' : ch === 'f' || ch === 'u' ? 'y' : 'c';
+        }
+        return noise(x, y, 61) < 14 ? 'Y' : noise(x, y, 62) < 6 ? 'g' : 'V';
+      },
+    ],
+  },
+);
+
+EFFECT_SPRITES.push(
+  {
+    key: 'fx_water_orb',
+    width: 6,
+    height: 6,
+    frames: [
+      (x, y) => {
+        const r = Math.hypot(x - 2.5, y - 2.5);
+        if (r < 1.2) return 'w';
+        if (r < 2.2) return 'a';
+        if (r < 3) return 'c';
+        return '.';
+      },
+    ],
+  },
+  {
+    key: 'fx_crystal_shard',
+    width: 5,
+    height: 9,
+    frames: [['..k..', '.kak.', '.kwk.', 'kawak', 'kawck', 'kacck', '.kck.', '.kck.', '..k..']],
+  },
+);
+
 // ---------------------------------------------------------------- アイコン（12x12）
 
 const icon = (key: string, rows: string[]): PixelSprite => ({ key, width: 12, height: 12, frames: [rows] });
@@ -849,6 +1116,20 @@ export const ICON_SPRITES: PixelSprite[] = [
     '..wsw.......',
     '.wsk........',
     '.kk.........',
+    '............',
+  ]),
+  icon('icon_memory', [
+    '............',
+    '.....kk.....',
+    '....kawk....',
+    '...kawwak...',
+    '...kaawak...',
+    '..kcaawaak..',
+    '..kccaaaak..',
+    '...kccaak...',
+    '...kccaak...',
+    '....kcak....',
+    '.....kk.....',
     '............',
   ]),
   icon('icon_bag', [
@@ -1017,6 +1298,36 @@ export const TILE_PIXELS: Record<string, PixelFrame> = {
     }
     return asphaltGen(x, y);
   },
+  // ---- 沈没都市・潮見の港
+  shallow: (x, y) => {
+    const wave = (x + Math.floor(y / 4) * 5) % 8;
+    if (y % 4 === 2 && wave < 3) return 'w';
+    if (noise(x, y, 71) < 10) return 'a';
+    return 'c';
+  },
+  sunken_road: (x, y) => {
+    const off = Math.floor(y / 8) % 2 ? 4 : 0;
+    if (y % 8 === 7 || (x + off) % 8 === 7) return 'n';
+    const n = noise(x, y, 72);
+    if (n < 5) return 'g';
+    if (n < 12) return 'b';
+    return 'm';
+  },
+  ruin: (x, y) => {
+    if (x === 0 || x === 15) return 'k';
+    if (y % 5 === 4) return 'Y';
+    // 刻まれた古代文字
+    if ((x === 5 || x === 10) && y % 5 >= 1 && y % 5 <= 2) return 'a';
+    return noise(x, y, 73) < 10 ? 'g' : 'V';
+  },
+  crystal: (x, y) => {
+    const d = Math.abs(x - 7.5) + Math.abs(y - 9) * 0.6;
+    if (d < 2.5 && y > 1) return y < 6 ? 'w' : 'a';
+    if (d < 4.5 && y > 1) return 'c';
+    if (d < 5.5 && y > 1) return 'n';
+    return noise(x, y, 74) < 12 ? 'n' : 'm';
+  },
+  pier: (x, y) => (y % 4 === 3 ? 'B' : noise(x, y, 75) < 8 ? 'Q' : 'u'),
   water: (x, y) => {
     const wave = (x + Math.floor(y / 4) * 5) % 8;
     if (y % 4 === 1 && wave < 3) return 'a';

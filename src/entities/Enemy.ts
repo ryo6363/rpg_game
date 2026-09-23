@@ -46,6 +46,16 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   trailTimer = 0;
   /** 飛び出しが終わったときに続けて行う処理（王都崩壊の移動など） */
   afterLunge: (() => void) | null = null;
+  /** 見えない（潜航・透明化）。狙えず、攻撃も当たらない */
+  hidden = false;
+  /** 渦の回る向き（毎回反対にする） */
+  vortexDir = 1;
+  /** 台詞を出したか（最初の一撃・HP半分） */
+  barked = { hit: false, half: false };
+  private blinkTimer = 0;
+  private blinkLeft = 0;
+  private guardUsed = false;
+  private guardLeft = 0;
   private flameTimer = 0;
 
   private hitFlash = 0;
@@ -86,6 +96,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.forcedPattern = null;
     this.hitOnce = false;
     this.afterLunge = null;
+    this.hidden = false;
+    this.vortexDir = 1;
+    this.barked = { hit: false, half: false };
+    this.blinkTimer = def.blink ? def.blink.every * (0.5 + Math.random() * 0.5) : 0;
+    this.blinkLeft = 0;
+    this.guardUsed = false;
+    this.guardLeft = 0;
 
     this.setTexture(def.sprite, 0);
     this.setPosition(x, y).setActive(true).setVisible(true).setAlpha(1).setScale(1).setAngle(0);
@@ -106,6 +123,24 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.setEnemyState('idle', Math.random() * 2);
   }
 
+  /** 見えなくする／戻す（潜航・透明化） */
+  setHidden(hidden: boolean, alpha = 0) {
+    this.hidden = hidden;
+    this.body.enable = !hidden;
+    this.shadow.setVisible(!hidden);
+    this.scene.tweens.killTweensOf(this);
+    this.scene.tweens.add({ targets: this, alpha: hidden ? alpha : 1, duration: 200 });
+  }
+
+  /** 防御姿勢中なら受けるダメージの倍率（1 = そのまま） */
+  get damageMultiplier(): number {
+    return this.guardLeft > 0 ? 1 - (this.def.guard?.reduction ?? 0) : 1;
+  }
+
+  get guarding(): boolean {
+    return this.guardLeft > 0;
+  }
+
   setEnemyState(state: EnemyState, timer = 0) {
     this.state = state;
     this.stateTimer = timer;
@@ -115,13 +150,21 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
    * ダメージを受ける。
    * 戻り値: died = 死亡した / phaseUp = ボスのフェーズが上がった
    */
-  applyDamage(amount: number, fromX: number, fromY: number): { died: boolean; phaseUp: boolean } {
-    if (!this.alive) return { died: false, phaseUp: false };
+  applyDamage(amount: number, fromX: number, fromY: number): { died: boolean; phaseUp: boolean; guardStarted: boolean } {
+    if (!this.alive || this.hidden) return { died: false, phaseUp: false, guardStarted: false };
     this.hp -= amount;
     this.hitFlash = COMBAT.hitFlashTime;
     if (this.hp <= 0) {
       this.die();
-      return { died: true, phaseUp: false };
+      return { died: true, phaseUp: false, guardStarted: false };
+    }
+    // HP が減ると一度だけ防御姿勢
+    let guardStarted = false;
+    const guard = this.def.guard;
+    if (guard && !this.guardUsed && this.hp / this.maxHp <= guard.hpRatio) {
+      this.guardUsed = true;
+      this.guardLeft = guard.duration;
+      guardStarted = true;
     }
     // フェーズ判定（ボス）
     let phaseUp = false;
@@ -139,7 +182,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.body.setVelocity(Math.cos(ang) * COMBAT.knockbackSpeed, Math.sin(ang) * COMBAT.knockbackSpeed);
       this.setEnemyState('knockback', COMBAT.knockbackTime);
     }
-    return { died: false, phaseUp };
+    return { died: false, phaseUp, guardStarted };
   }
 
   private die() {
@@ -196,6 +239,23 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.stateTimer -= dt;
     this.hitFlash -= dt;
 
+    // 一定間隔で透明化（攻撃の溜め中は透明にならない）
+    const blink = this.def.blink;
+    if (blink) {
+      if (this.blinkLeft > 0) {
+        this.blinkLeft -= dt;
+        if (this.blinkLeft <= 0) this.setHidden(false);
+      } else if (this.state !== 'windup' && this.state !== 'lunge') {
+        this.blinkTimer -= dt;
+        if (this.blinkTimer <= 0) {
+          this.blinkTimer = blink.every;
+          this.blinkLeft = blink.duration;
+          this.setHidden(true, 0.15);
+        }
+      }
+    }
+    this.guardLeft -= dt;
+
     ENEMY_AI[this.def.ai](this, dt, world);
 
     // 見た目（溜め中はプレイヤーの方を向く）
@@ -204,6 +264,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     else if (vx > 0.01) this.setFlipX(false);
     if (this.hitFlash > 0) this.setTintFill(0xffffff);
     else if (this.state === 'windup' && Math.floor(this.stateTimer * 16) % 2 === 0) this.setTint(0xff6060);
+    else if (this.guardLeft > 0) this.setTint(0x73eff7);
     else this.clearTint();
     // 炎の攻撃の溜め中は、口元に青白い炎がちらつく
     this.flameTimer -= dt;

@@ -1,5 +1,6 @@
 import type { BossPatternDef, EnemyAiKind, EnemyAttackDef } from '../core/types';
 import type { Enemy } from '../entities/Enemy';
+import { Sfx } from '../ui/sfx';
 import { weightedPick } from './Items';
 import type { CombatWorld } from './CombatWorld';
 
@@ -63,7 +64,51 @@ function startAttack(e: Enemy, world: CombatWorld, atk: EnemyAttackDef) {
   // 十字斬は縦横（向きに関係なく）
   const angle = atk.shape.type === 'cross' ? 0 : e.attackAngle;
   e.setEnemyState('windup', windup);
-  world.spawnAoe({ x: e.aoeX, y: e.aoeY, angle, shape: atk.shape, duration: windup, power, owner: e, effect: atk.effect });
+  // 深海の渦：広い範囲で引き寄せ（ダメージなし）、爆発するのは中心だけ
+  if (atk.pull) {
+    const r = atk.pullRadius ?? 70;
+    world.vortexEffect(e.aoeX, e.aoeY, e.vortexDir, windup);
+    world.spawnAoe({ x: e.aoeX, y: e.aoeY, angle: 0, shape: { type: 'circle', radius: r }, duration: windup, power: 0, owner: e, noDamage: true, pull: atk.pull });
+  }
+  world.spawnAoe({
+    x: e.aoeX,
+    y: e.aoeY,
+    angle,
+    shape: atk.shape,
+    duration: windup,
+    power,
+    owner: e,
+    effect: atk.effect,
+    leaveWater: atk.leaveWater,
+    // 弾を撃つ攻撃は、予兆は軌道を見せるだけ（当たるのは弾）
+    noDamage: !!atk.projectile,
+  });
+}
+
+/** 予兆の線に沿って弾を撃つ */
+function fireProjectiles(e: Enemy, world: CombatWorld, atk: EnemyAttackDef) {
+  const pr = atk.projectile!;
+  const count = pr.count ?? 1;
+  const spread = ((pr.spread ?? 0) * Math.PI) / 180;
+  for (let i = 0; i < count; i++) {
+    const a = count === 1 ? e.attackAngle : e.attackAngle + spread * (i / (count - 1) - 0.5);
+    world.spawnProjectile({
+      x: e.x + Math.cos(a) * 8,
+      y: e.y + Math.sin(a) * 8,
+      angle: a,
+      speed: pr.speed,
+      distance: pr.distance,
+      sprite: pr.sprite,
+      power: e.atk * (atk.power ?? 1),
+      hitRadius: pr.hitRadius ?? 4,
+      hostile: true,
+    });
+  }
+}
+
+/** ボスエリアの中心と広さ */
+function arena(e: Enemy, atk: EnemyAttackDef) {
+  return { x: e.homeX, y: e.homeY, r: atk.arenaRadius ?? 160 };
 }
 
 // ---------------------------------------------------------------- 特殊な攻撃
@@ -71,6 +116,197 @@ function startAttack(e: Enemy, world: CombatWorld, atk: EnemyAttackDef) {
 type SpecialHandler = (e: Enemy, world: CombatWorld, atk: EnemyAttackDef, power: number, windup: number) => void;
 
 const SPECIALS: Record<NonNullable<EnemyAttackDef['special']>, SpecialHandler> = {
+  /**
+   * 潜航：水中へ潜って見えなくなり、予兆の円がプレイヤーを追いかける。
+   * 追いかけ終わると止まり、その場所へ飛び出して範囲攻撃
+   */
+  submerge: (e, world, atk, power, windup) => {
+    const p = world.player;
+    e.setHidden(true);
+    world.showAoeEffect({ x: e.x, y: e.y, angle: 0, shape: { type: 'circle', radius: 14 }, duration: 0, power: 0, effect: 'splash' });
+    world.spawnAoe({
+      x: p.x,
+      y: p.y,
+      angle: 0,
+      shape: atk.shape,
+      duration: windup,
+      follow: atk.followTime ?? windup * 0.65,
+      power,
+      owner: e,
+      effect: atk.effect ?? 'splash',
+      leaveWater: atk.leaveWater,
+      onResolve: (spec) => {
+        e.setPosition(spec.x, spec.y);
+        e.setHidden(false);
+      },
+    });
+    e.setEnemyState('windup', windup);
+  },
+
+  /**
+   * 津波・尻尾の横薙ぎ：エリアの片側を覆う長方形の予兆のあと、帯が端から高速で横切る。
+   * 当たるとダメージと、進む向きへのノックバック
+   */
+  sweep: (e, world, atk, power, windup) => {
+    const sw = atk.sweep!;
+    const A = arena(e, atk);
+    const fromLow = Math.random() < 0.5;
+    const dir = fromLow ? 1 : -1;
+    const coverLen = A.r * 2 * sw.cover;
+    const center = sw.axis === 'y' ? A.y : A.x;
+    const edge = center - dir * A.r;
+    const mid = edge + (dir * coverLen) / 2;
+    const angle = sw.axis === 'y' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : dir > 0 ? 0 : Math.PI;
+    const cross = sw.axis === 'y' ? A.x : A.y;
+    world.spawnAoe({
+      x: sw.axis === 'y' ? cross : mid,
+      y: sw.axis === 'y' ? mid : cross,
+      angle,
+      shape: { type: 'rect', length: coverLen, width: A.r * 2 },
+      duration: windup,
+      power: 0,
+      owner: e,
+      noDamage: true,
+      onResolve: () =>
+        world.startSweep({
+          axis: sw.axis,
+          from: edge,
+          to: edge + dir * coverLen,
+          spanMin: cross - A.r,
+          spanMax: cross + A.r,
+          band: sw.band,
+          speed: sw.speed,
+          knockback: sw.knockback,
+          power,
+          leaveWater: sw.leaveWater,
+        }),
+    });
+    e.setEnemyState('windup', windup);
+  },
+
+  /** 回転する弾幕：渦の予兆のあと、弾が渦を巻きながら広がる。回る向きは毎回反対 */
+  vortex: (e, world, atk, power, windup) => {
+    const v = atk.vortex!;
+    e.vortexDir *= -1;
+    const dir = e.vortexDir;
+    world.vortexEffect(e.x, e.y, dir, windup + v.duration);
+    const scene = world.gameScene;
+    let base = Math.random() * Math.PI * 2;
+    let n = 0;
+    scene.time.delayedCall(windup * 1000, () => {
+      scene.time.addEvent({
+        delay: v.interval * 1000,
+        repeat: Math.floor(v.duration / v.interval) - 1,
+        callback: () => {
+          if (!e.alive) return;
+          base += dir * 0.35;
+          for (let i = 0; i < v.spokes; i++) {
+            const a = base + (i / v.spokes) * Math.PI * 2;
+            world.spawnProjectile({
+              x: e.x,
+              y: e.y,
+              angle: a,
+              speed: v.speed,
+              distance: 260,
+              sprite: n % 2 ? 'fx_crystal_shard' : 'fx_water_orb',
+              power,
+              hitRadius: 4,
+              hostile: true,
+              curve: dir * 0.8,
+            });
+          }
+          n++;
+        },
+      });
+    });
+    e.setEnemyState('windup', windup + v.duration);
+  },
+
+  /**
+   * 記憶喰らい：プレイヤーの周りに、過去の主人公を思わせる幻影が現れ、
+   * 1体ずつ時間差でプレイヤーのいた場所へ突撃する（突撃先に小さな予兆）
+   */
+  phantoms: (e, world, atk, power, windup) => {
+    const ph = atk.phantoms!;
+    const p = world.player;
+    const scene = world.gameScene;
+    const baseAngle = Math.random() * Math.PI * 2;
+    for (let i = 0; i < ph.count; i++) {
+      const a = baseAngle + (i / ph.count) * Math.PI * 2;
+      const sx = p.x + Math.cos(a) * 70;
+      const sy = p.y + Math.sin(a) * 70;
+      const ghost = scene.add
+        .image(sx, sy, p.texture.key, 0)
+        .setTintFill(0x73eff7)
+        .setAlpha(0)
+        .setFlipX(Math.cos(a) > 0)
+        .setDepth(sy);
+      scene.tweens.add({ targets: ghost, alpha: 0.55, duration: 250 });
+      const delay = i * ph.stagger;
+      // 突撃先は、その幻影が動き出す少し前のプレイヤーの位置
+      scene.time.delayedCall(delay * 1000, () => {
+        if (!e.alive) return ghost.destroy();
+        world.spawnAoe({
+          x: p.x,
+          y: p.y,
+          angle: 0,
+          shape: atk.shape,
+          duration: windup,
+          power,
+          owner: e,
+          effect: 'splash',
+          onResolve: (spec) => {
+            scene.tweens.add({
+              targets: ghost,
+              x: spec.x,
+              y: spec.y,
+              duration: 90,
+              onComplete: () => scene.tweens.add({ targets: ghost, alpha: 0, duration: 200, onComplete: () => ghost.destroy() }),
+            });
+          },
+        });
+      });
+      // 念のため：倒されて予兆が消えた場合も幻影を片付ける
+      scene.time.delayedCall((delay + windup + 1) * 1000, () => ghost.active && ghost.destroy());
+    }
+    e.setEnemyState('windup', windup + (ph.count - 1) * ph.stagger);
+  },
+
+  /** 輪廻の海：エリアの大部分を水にする（ダメージはないが遅くなる）。乾いた島だけが残る */
+  sea: (e, world, atk, _power, windup) => {
+    const A = arena(e, atk);
+    const scene = world.gameScene;
+    scene.cameras.main.shake(700, 0.01);
+    scene.cameras.main.flash(400, 65, 166, 246);
+    Sfx.boom(0.5);
+    // 乾いた島
+    const islands: { x: number; y: number }[] = [];
+    for (let i = 0; i < 3; i++) {
+      for (let tries = 0; tries < 30; tries++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = A.r * (0.2 + Math.random() * 0.6);
+        const x = A.x + Math.cos(a) * d;
+        const y = A.y + Math.sin(a) * d;
+        if (!world.isWall(x, y) && islands.every((o) => Math.hypot(o.x - x, o.y - y) > 60)) {
+          islands.push({ x, y });
+          break;
+        }
+      }
+    }
+    const step = 30;
+    for (let gx = -A.r; gx <= A.r; gx += step) {
+      for (let gy = -A.r; gy <= A.r; gy += step) {
+        const x = A.x + gx;
+        const y = A.y + gy;
+        if (Math.hypot(gx, gy) > A.r || world.isWall(x, y)) continue;
+        if (islands.some((o) => Math.hypot(o.x - x, o.y - y) < 36)) continue;
+        // 少しずつ広がっていく
+        scene.time.delayedCall(Math.hypot(gx, gy) * 3, () => world.spawnWater(x, y, 24, 999));
+      }
+    }
+    e.setEnemyState('windup', windup);
+  },
+
   /**
    * 王都崩壊：エリア中央へ移動してから、エリア一面に大きな円を並べる。
    * 安全地帯を1〜2か所だけ残し、すべて同時に爆発
@@ -158,6 +394,7 @@ function updateAttack(e: Enemy, dt: number, world: CombatWorld): boolean {
       e.body.setVelocity(0, 0);
       if (e.stateTimer > 0) return true;
       const pattern = atk as BossPatternDef | undefined;
+      if (atk?.projectile) fireProjectiles(e, world, atk);
       if (pattern?.leap) {
         // 範囲の中心へ跳ぶ
         const t = pattern.leapTime ?? 0.2;
@@ -292,7 +529,9 @@ const boss: AiHandler = (e, dt, world) => {
   }
 
   if (e.attackCooldown <= 0) {
-    const usable = b.patterns.filter((pt) => dist <= pt.range + p.radius + e.radius && e.phase >= (pt.minPhase ?? 1));
+    const usable = b.patterns.filter(
+      (pt) => dist <= pt.range + p.radius + e.radius && e.phase >= (pt.minPhase ?? 1) && e.phase <= (pt.maxPhase ?? 99),
+    );
     const pattern = weightedPick(usable, (pt) => pt.weight);
     if (pattern) {
       beginAttack(e, world, pattern);

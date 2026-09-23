@@ -108,13 +108,15 @@ export type EnemyAiKind = 'melee' | 'boss';
  * - line: 前方へ長さ length・幅 width の帯
  * - ring: ドーナツ型。inner より内側（中心付近）は安全
  * - cross: 中心から縦横に長さ length・幅 width の十字。斜めが安全
+ * - rect: 向きに沿って長さ length・幅 width の長方形（中心が基点）。津波・尻尾の横薙ぎなど
  */
 export type AoeShape =
   | { type: 'circle'; radius: number; offset?: number }
   | { type: 'cone'; radius: number; angle: number }
   | { type: 'line'; length: number; width: number }
   | { type: 'ring'; inner: number; outer: number }
-  | { type: 'cross'; length: number; width: number };
+  | { type: 'cross'; length: number; width: number }
+  | { type: 'rect'; length: number; width: number };
 
 /** 敵の攻撃 */
 export interface EnemyAttackDef {
@@ -148,17 +150,49 @@ export interface EnemyAttackDef {
   /** 飛び出した軌跡に残る炎の床（触れている間ダメージが続く） */
   trail?: { duration: number; radius: number; power: number; tick: number };
   /** 特殊な攻撃（処理は systems/EnemyAI.ts） */
-  special?: 'arenaCollapse' | 'timeStop' | 'finale';
+  special?: EnemySpecial;
+  /** 予兆の線に沿って弾を撃つ（予兆そのものはダメージなし） */
+  projectile?: { sprite: string; speed: number; distance: number; count?: number; spread?: number; hitRadius?: number };
+  /** 判定の瞬間、その場所に水エリア（移動が遅くなる）を残す */
+  leaveWater?: { radius: number; duration: number };
+  /** 引き寄せる強さ（px/秒）と、引き寄せる範囲の半径（範囲の中心だけが爆発する攻撃） */
+  pull?: number;
+  pullRadius?: number;
+  /** submerge: 予兆がプレイヤーを追いかける時間（秒） */
+  followTime?: number;
+  /** sweep（津波・尻尾）: 帯の進む向き・進む速さ・当たったときに押し出す強さ */
+  sweep?: { axis: 'x' | 'y'; cover: number; speed: number; band: number; knockback: number; leaveWater?: boolean };
+  /** phantoms: 幻影の数と、1体ごとのずれ（秒） */
+  phantoms?: { count: number; stagger: number };
+  /** vortex: 弾幕の続く時間・発射間隔・1回に撃つ方向の数 */
+  vortex?: { duration: number; interval: number; spokes: number; speed: number };
   /** arenaCollapse: 残す安全地帯の数 / エリアの広さ */
   safeSpots?: number;
   arenaRadius?: number;
 }
 
 /**
+ * 特殊な攻撃
+ * arenaCollapse = 王都崩壊 / timeStop = 時葬 / finale = 輪廻断絶（第2章）
+ * submerge = 潜航（見えなくなって予兆が追いかけ、飛び出す）/ sweep = 津波・尻尾の横薙ぎ
+ * vortex = 回転する弾幕 / phantoms = 記憶喰らい（幻影の突撃）/ sea = 輪廻の海（エリアの大部分を水にする）
+ */
+export type EnemySpecial =
+  | 'arenaCollapse'
+  | 'timeStop'
+  | 'finale'
+  | 'submerge'
+  | 'sweep'
+  | 'vortex'
+  | 'phantoms'
+  | 'sea';
+
+/**
  * 予兆範囲の判定時の演出
  * flame = 範囲いっぱいに炎 / meteor = 上空から落ちてくる / finale = 必殺技の大爆発（画面揺れ・効果音）
+ * splash = 水しぶき / crystal = 水晶が落ちてくる
  */
-export type AoeEffect = 'flame' | 'meteor' | 'finale';
+export type AoeEffect = 'flame' | 'meteor' | 'finale' | 'splash' | 'crystal';
 
 /** ボスの攻撃パターン */
 export interface BossPatternDef extends EnemyAttackDef {
@@ -170,6 +204,8 @@ export interface BossPatternDef extends EnemyAttackDef {
   range: number;
   /** このフェーズ以上で使う（1 始まり） */
   minPhase?: number;
+  /** このフェーズまでしか使わない */
+  maxPhase?: number;
   /** 判定の瞬間に範囲の中心へ跳ぶ */
   leap?: boolean;
   /** 跳ぶ時間（秒。省略時 0.2） */
@@ -199,6 +235,14 @@ export interface EnemyDef {
   dropRate?: number;
   /** ノックバックしない（重い敵・固定砲台） */
   heavy?: boolean;
+  /** 一定間隔で透明になる（その間は狙えない・攻撃が当たらない） */
+  blink?: { every: number; duration: number };
+  /** HP がこの割合以下になると一度だけ防御姿勢（受けるダメージを減らす） */
+  guard?: { hpRatio: number; duration: number; reduction: number };
+  /** 戦闘中に頭上に出す台詞（最初の一撃と、HP が半分を切ったとき） */
+  barks?: string[];
+  /** 倒したときの確定ドロップ（レアモンスター用） */
+  guaranteedLoot?: { count: number; minRarity: Rarity };
 
   /** ---- ボスのみ */
   boss?: {
@@ -214,6 +258,8 @@ export interface EnemyDef {
     forcedOnPhase?: Record<number, string>;
     /** 確定ドロップ */
     loot: { count: number; minRarity: Rarity };
+    /** 倒れるときに体のあちこちで出す演出（水と水晶に崩れる など） */
+    deathEffects?: AoeEffect[];
   };
 }
 
@@ -242,6 +288,12 @@ export interface AreaObjectDef {
   solid?: boolean;
   /** このフラグが立っていたら絵のコマを変える */
   frameWhen?: { flag: string; frame: number };
+  /** 宝箱：触れると開いて装備が出る（1周に1回。開いた絵はコマ1） */
+  loot?: { minRarity: Rarity };
+  /** 地図に置かず、イベント（spawnObject）で出す */
+  hidden?: boolean;
+  /** このフラグが立ったら消える */
+  hideWhen?: string;
 }
 
 /** エリア間の出入口 */
@@ -277,6 +329,8 @@ export interface AreaDef {
   objects?: AreaObjectDef[];
   /** ボスエリアならボスの敵 id と出現位置の文字 */
   boss?: { id: string; marker: string };
+  /** 満ち引きで現れたり消えたりする水たまりの位置の文字 */
+  tideMarker?: string;
 }
 
 // ---------------------------------------------------------------- ストーリー
@@ -317,7 +371,11 @@ export interface StoryEventDef {
     | { type: 'chapterClear' }
     | { type: 'goTo'; area: string; arrive?: string }
     | { type: 'dropItem'; baseId: string; rarity: Rarity }
-    | { type: 'npcMenu' };
+    | { type: 'npcMenu' }
+    /** 過去の映像の演出 */
+    | { type: 'flashback' }
+    /** エリアの objects に hidden で定義した物を、最後にボスを倒した位置（なければプレイヤーの前）に出す */
+    | { type: 'spawnObject'; object: string };
 }
 
 /** 章 */

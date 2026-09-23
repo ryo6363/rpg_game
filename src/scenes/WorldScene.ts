@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
-import { PLAYER } from '../config/balance';
+import { PLAYER, WATER } from '../config/balance';
 import { DebugState } from '../core/DebugState';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { HudState } from '../core/HudState';
 import { SaveManager } from '../core/SaveManager';
-import type { AreaDef, AreaObjectDef, DialogLine, ExitDef, ItemInstance, StoryEventDef, StoryTrigger } from '../core/types';
+import type { AreaDef, AreaObjectDef, DialogLine, ExitDef, ItemInstance, Rarity, StoryEventDef, StoryTrigger } from '../core/types';
 import { viewport } from '../core/Viewport';
 import { AREAS } from '../data/areas';
 import type { Enemy } from '../entities/Enemy';
@@ -13,16 +13,19 @@ import { FloatingTextPool } from '../entities/FloatingTextPool';
 import { Player } from '../entities/Player';
 import { AoeManager } from '../entities/AoeManager';
 import { HazardManager } from '../entities/HazardManager';
+import { SweepManager } from '../entities/SweepManager';
+import { WaterManager } from '../entities/WaterManager';
 import { ProjectileManager } from '../entities/ProjectileManager';
 import { InputState } from '../input/InputState';
 import { rollDamage } from '../systems/Combat';
-import type { AoeSpec, CombatWorld, HazardSpec, ProjectileSpec } from '../systems/CombatWorld';
+import type { AoeSpec, CombatWorld, HazardSpec, ProjectileSpec, SweepSpec } from '../systems/CombatWorld';
 import { addToInventory } from '../systems/Equipment';
 import { createItem } from '../systems/Items';
 import { buildAreaMap, type BuiltMap } from '../systems/MapBuilder';
-import { completeEvent, currentLoop, enemyLevel, findEvent, hasFlag, linesForLoop } from '../systems/Story';
+import { completeEvent, currentLoop, enemyLevel, findEvent, hasFlag, linesForLoop, setFlag } from '../systems/Story';
 import { OVERLAY_OPEN_KEY, openOverlay, WORLD_SCENE_KEY } from '../ui/overlay';
 import { Sfx } from '../ui/sfx';
+import { createText } from '../ui/text';
 
 export interface WorldData {
   areaId: string;
@@ -44,6 +47,10 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   protected projectiles!: ProjectileManager;
   protected aoes!: AoeManager;
   protected hazards!: HazardManager;
+  protected water!: WaterManager;
+  protected sweeps!: SweepManager;
+  /** 最後にボスを倒した位置（イベントで物を出すときに使う） */
+  protected lastBossPos: { x: number; y: number } | null = null;
   private arrive = '@';
   private leaving = false;
 
@@ -83,6 +90,10 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.projectiles = new ProjectileManager(this, this);
     this.aoes = new AoeManager(this, this);
     this.hazards = new HazardManager(this, this);
+    this.water = new WaterManager(this, this.map.width, this.map.height);
+    this.sweeps = new SweepManager(this, this);
+    // 満ち引きする潮だまり
+    if (this.area.tideMarker) for (const pos of this.map.markers.get(this.area.tideMarker) ?? []) this.water.addTide(pos.x, pos.y);
 
     const cam = this.cameras.main;
     cam.setZoom(viewport.zoom).setRoundPixels(true).setBackgroundColor('#1a1c2c');
@@ -138,35 +149,61 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   // ------------------------------------------------------------ ストーリー
 
   /** 調べられる物（近づくと自動でイベント） */
-  private objects: { def: AreaObjectDef; img: Phaser.GameObjects.Image; touched: boolean }[] = [];
+  private objects: {
+    def: AreaObjectDef;
+    img: Phaser.GameObjects.Image;
+    shadow: Phaser.GameObjects.Image;
+    touched: boolean;
+    chestFlag: string;
+    hiding: boolean;
+  }[] = [];
 
   private createObjects() {
     this.objects = [];
     const loop = currentLoop();
     for (const def of this.area.objects ?? []) {
+      if (def.hidden) continue;
       if ((def.minLoop ?? 1) > loop || loop > (def.maxLoop ?? Infinity)) continue;
       // 同じ文字を複数置けば、すべての位置に置く
-      for (const pos of this.map.markers.get(def.marker) ?? []) {
-        const img = def.solid
-          ? this.physics.add.staticImage(pos.x, pos.y, def.sprite, 0)
-          : this.add.image(pos.x, pos.y, def.sprite, 0);
-        img.setDepth(pos.y + img.height * 0.3);
-        if (def.solid) this.physics.add.collider(this.player, img as Phaser.Physics.Arcade.Image);
-        const shadow = img.width > 16 ? 1.6 : 1;
-        this.add
-          .image(pos.x, pos.y + img.height * 0.4, 'shadow_wide', 0)
-          .setScale(shadow)
-          .setAlpha(0.3)
-          .setDepth(pos.y - 1);
-        this.objects.push({ def, img, touched: false });
-      }
+      for (const pos of this.map.markers.get(def.marker) ?? []) this.placeObject(def, pos.x, pos.y);
     }
+  }
+
+  /** 物を1つ置く（宝箱は開いていれば開いた絵で） */
+  protected placeObject(def: AreaObjectDef, x: number, y: number) {
+    const img = def.solid ? this.physics.add.staticImage(x, y, def.sprite, 0) : this.add.image(x, y, def.sprite, 0);
+    img.setDepth(y + img.height * 0.3);
+    if (def.solid) this.physics.add.collider(this.player, img as Phaser.Physics.Arcade.Image);
+    const shadow = img.width > 16 ? 1.6 : 1;
+    const shadowImg = this.add
+      .image(x, y + img.height * 0.4, 'shadow_wide', 0)
+      .setScale(shadow)
+      .setAlpha(0.3)
+      .setDepth(y - 1);
+    const index = this.objects.filter((o) => o.def.id === def.id).length;
+    const chestFlag = `chest_${this.area.id}_${def.id}_${index}`;
+    const opened = !!def.loot && hasFlag(chestFlag);
+    if (opened) img.setFrame(1);
+    if (def.hideWhen && hasFlag(def.hideWhen)) {
+      img.setVisible(false);
+      shadowImg.setVisible(false);
+      if (img.body) (img.body as Phaser.Physics.Arcade.StaticBody).enable = false;
+    }
+    const gone = !!def.hideWhen && hasFlag(def.hideWhen);
+    this.objects.push({ def, img, shadow: shadowImg, touched: opened || gone, chestFlag, hiding: gone });
   }
 
   private refreshObjectFrames() {
     for (const o of this.objects) {
       const fw = o.def.frameWhen;
       if (fw) o.img.setFrame(hasFlag(fw.flag) ? fw.frame : 0);
+      // 消える物（記憶の結晶など）：光って消える
+      if (o.def.hideWhen && hasFlag(o.def.hideWhen) && o.img.visible && !o.hiding) {
+        o.hiding = true;
+        o.touched = true;
+        this.sparks.explode(10, o.img.x, o.img.y);
+        this.tweens.add({ targets: [o.img, o.shadow], alpha: 0, duration: 500, onComplete: () => { o.img.setVisible(false); o.shadow.setVisible(false); } });
+      }
     }
   }
 
@@ -174,6 +211,14 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     for (const o of this.objects) {
       if (o.touched) continue;
       if (Math.hypot(o.img.x - this.player.x, o.img.y - this.player.y) < 20) {
+        if (o.def.loot) {
+          // 宝箱：開けて装備を出す（1周に1回）
+          o.touched = true;
+          o.img.setFrame(1);
+          setFlag(o.chestFlag);
+          this.dropLootAt(o.img.x, o.img.y + 10, o.def.loot.minRarity);
+          continue;
+        }
         // 同じ物が複数あっても、どれか1つに触れたら全部「触れた」扱い
         for (const other of this.objects) if (other.def.id === o.def.id) other.touched = true;
         this.playStory({ type: 'touch', object: o.def.id });
@@ -225,8 +270,22 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
       case 'dropItem':
         this.dropStoryItem(createItem(then.baseId, then.rarity, enemyLevel(this.area.level)));
         return next();
+      case 'flashback':
+        openOverlay(this, 'Flashback', { onComplete: next });
+        return;
+      case 'spawnObject': {
+        const def = this.area.objects?.find((o) => o.id === then.object);
+        if (def) {
+          const pos = this.lastBossPos ?? { x: this.player.x, y: this.player.y - 30 };
+          this.placeObject(def, pos.x, pos.y);
+        }
+        return next();
+      }
     }
   }
+
+  /** 宝箱の中身（フィールドでは地面に落とす） */
+  protected dropLootAt(_x: number, _y: number, _minRarity: Rarity) {}
 
   /** イベントで手に入る装備（フィールドでは足元に落とす） */
   protected dropStoryItem(item: ItemInstance) {
@@ -242,6 +301,8 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.projectiles.update(dt);
     this.aoes.update(dt);
     this.hazards.update(dt);
+    this.water.update(dt);
+    this.sweeps.update(dt);
     if (!this.leaving && !this.player.dead) this.updateObjects();
     if (!this.leaving && !this.player.dead) {
       const exit = this.map.exitAt(this.player.x, this.player.y);
@@ -325,6 +386,60 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.projectiles.spawn(spec);
   }
 
+  spawnWater(x: number, y: number, radius: number, duration: number) {
+    this.water.spawn(x, y, radius, duration);
+  }
+
+  moveMultiplierAt(x: number, y: number): number {
+    return this.map.isSlow(x, y) || this.water.contains(x, y) ? WATER.slowMultiplier : 1;
+  }
+
+  pushPlayer(vx: number, vy: number) {
+    this.player.push(vx, vy);
+  }
+
+  knockPlayer(vx: number, vy: number, time: number) {
+    if (DebugState.invincible || this.player.dead) return;
+    this.player.knockBack(vx, vy, time);
+  }
+
+  startSweep(spec: SweepSpec) {
+    this.sweeps.start(spec);
+  }
+
+  /** 渦巻きの腕が回る演出 */
+  vortexEffect(x: number, y: number, dir: number, duration: number) {
+    const g = this.add.graphics().setDepth(-4996);
+    const t = { a: 0 };
+    this.tweens.add({
+      targets: t,
+      a: 1,
+      duration: duration * 1000,
+      onUpdate: () => {
+        g.clear();
+        const fade = Math.min(1, t.a * 4, (1 - t.a) * 4);
+        for (let arm = 0; arm < 4; arm++) {
+          const pts: { x: number; y: number }[] = [];
+          for (let i = 0; i <= 24; i++) {
+            const r = 8 + i * 6;
+            const ang = dir * (t.a * 8 + i * 0.22) + (arm * Math.PI) / 2;
+            pts.push({ x: x + Math.cos(ang) * r, y: y + Math.sin(ang) * r });
+          }
+          g.lineStyle(2, 0x73eff7, 0.45 * fade).strokePoints(pts);
+        }
+      },
+      onComplete: () => g.destroy(),
+    });
+  }
+
+  /** 頭上の吹き出し（戦闘は止めない） */
+  showSpeech(x: number, y: number, text: string) {
+    const t = createText(this, x, y - 16, text, 6, '#f4f4f4', { backgroundColor: '#1a1c2ccc', padding: { x: 2, y: 1 } })
+      .setOrigin(0.5, 1)
+      .setDepth(100001);
+    this.tweens.add({ targets: t, y: y - 20, alpha: 0, delay: 2000, duration: 400, onComplete: () => t.destroy() });
+  }
+
   spawnHazard(spec: HazardSpec) {
     this.hazards.spawn(spec);
   }
@@ -332,6 +447,8 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   showAoeEffect(spec: AoeSpec) {
     if (spec.effect === 'meteor') return this.showMeteor(spec);
     if (spec.effect === 'finale') return this.showFinale(spec);
+    if (spec.effect === 'splash') return this.showSplash(spec);
+    if (spec.effect === 'crystal') return this.showCrystal(spec);
     if (spec.effect !== 'flame') return;
     // 範囲の広さに合わせた数の炎を、範囲内のランダムな位置に立ち上らせる
     const s = spec.shape;
@@ -387,6 +504,33 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
         streak.destroy();
         this.showBlast(spec.x, spec.y, r, 0xffd23f);
         this.sparks.explode(4, spec.x, spec.y);
+      },
+    });
+  }
+
+  /** 水しぶき：青い爆発と、飛び散る水滴 */
+  private showSplash(spec: AoeSpec) {
+    const r = spec.shape.type === 'circle' ? spec.shape.radius : 20;
+    this.showBlast(spec.x, spec.y, r, 0x41a6f6);
+    for (let i = 0; i < 8; i++) {
+      const p = AoeManager.randomPoint(spec);
+      const d = this.add.image(p.x, p.y, 'fx_pixel', 0).setScale(2).setTint(0x73eff7).setDepth(p.y + 30);
+      this.tweens.add({ targets: d, y: p.y - 10 - Math.random() * 8, alpha: 0, duration: 300 + Math.random() * 200, onComplete: () => d.destroy() });
+    }
+  }
+
+  /** 水晶が上空から落ちて砕ける */
+  private showCrystal(spec: AoeSpec) {
+    const r = spec.shape.type === 'circle' ? spec.shape.radius : 16;
+    const shard = this.add.image(spec.x, spec.y - 60, 'fx_crystal_shard', 0).setDepth(spec.y + 40);
+    this.tweens.add({
+      targets: shard,
+      y: spec.y,
+      duration: 110,
+      onComplete: () => {
+        shard.destroy();
+        this.showBlast(spec.x, spec.y, r, 0x73eff7);
+        this.sparks.explode(5, spec.x, spec.y);
       },
     });
   }

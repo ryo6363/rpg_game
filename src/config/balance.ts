@@ -158,3 +158,11 @@ export const BOSS = {
   /** 撃破演出の長さ（秒） */
   deathTime: 1.6,
 } as const;
+
+/** 水エリア（第3章） */
+export const WATER = {
+  /** 水の中での移動速度の倍率 */
+  slowMultiplier: 0.45,
+  /** 潮だまり：半径・満ちている秒数・引いている秒数 */
+  tide: { radius: 30, wet: 8, dry: 5 },
+} as const;

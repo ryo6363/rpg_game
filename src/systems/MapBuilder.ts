@@ -18,6 +18,8 @@ export interface BuiltMap {
   exitAt(x: number, y: number): ExitDef | null;
   /** その座標が壁（通れないタイル）か */
   isWall(x: number, y: number): boolean;
+  /** その座標が浅瀬（移動が遅くなるタイル）か */
+  isSlow(x: number, y: number): boolean;
 }
 
 export function buildAreaMap(scene: Phaser.Scene, area: AreaDef): BuiltMap {
@@ -90,6 +92,10 @@ export function buildAreaMap(scene: Phaser.Scene, area: AreaDef): BuiltMap {
     isWall: (x, y) => {
       const idx = data[Math.floor(y / ts)]?.[Math.floor(x / ts)];
       return idx === undefined || TILE_TYPES[idx].collide;
+    },
+    isSlow: (x, y) => {
+      const idx = data[Math.floor(y / ts)]?.[Math.floor(x / ts)];
+      return idx !== undefined && !!TILE_TYPES[idx].slow;
     },
   };
 }

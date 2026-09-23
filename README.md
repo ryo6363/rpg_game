@@ -83,7 +83,7 @@ src/
 ### 拡張のしかた
 
 - **敵を増やす**: `data/sprites.ts` に見た目、`data/enemies.ts` に定義を追加し、`data/areas.ts` の `enemies` に登録
-- **敵の攻撃範囲（予兆）**: `data/enemies.ts` の `attack` に形（円 circle／扇 cone／直線 line／ドーナツ ring／十字 cross）と溜め時間を書く。連続攻撃（repeat）・ばらまき（scatter）・突進の接触判定（contact）・炎の床（trail）・特殊技（special：王都崩壊／時葬／輪廻断絶）も指定できる。見た目の色は `config/balance.ts` の TELEGRAPH
+- **敵の攻撃範囲（予兆）**: `data/enemies.ts` の `attack` に形（円 circle／扇 cone／直線 line／ドーナツ ring／十字 cross／長方形 rect）と溜め時間を書く。連続攻撃（repeat）・ばらまき（scatter）・突進の接触判定（contact）・炎の床（trail）・弾（projectile）・水たまりを残す（leaveWater）・引き寄せ（pull）・特殊技（special：王都崩壊／時葬／輪廻断絶／潜航／津波・尻尾の薙ぎ払い／渦の弾幕／幻影／輪廻の海）も指定できる。敵そのものには透明化（blink）・防御姿勢（guard）・戦闘中の台詞（barks）・確定ドロップ（guaranteedLoot）を付けられる。見た目の色は `config/balance.ts` の TELEGRAPH
 - **新しい敵の動き**: `systems/EnemyAI.ts` に関数を追加して `ENEMY_AI` に登録
 - **装備の種類を増やす**: `data/itemBases.ts` に追加（アイコンは `data/sprites.ts` の ICON_SPRITES）
 - **追加効果を増やす**: `data/affixes.ts` に追加。ドロップ率・レアリティ確率などは `config/balance.ts` の LOOT
@@ -93,6 +93,7 @@ src/
 - **ストーリー**: `data/story/chapterN.ts` にイベント（きっかけ・条件・台詞・その後の動作）を書き、`data/story/index.ts` に並べる。台詞は `minLoop` / `maxLoop` で周回ごとに変えられる
 - **章を増やす**: `data/chapters.ts` の `available` を true にし、エリア・ストーリーを追加する。最終章（`next` なし）をクリアすると周回に入る
 - **ボス**: `data/enemies.ts` で `ai: 'boss'` にし、`boss.patterns`（攻撃パターン）と `phases`（フェーズが変わる HP の割合）を書く。`data/areas.ts` の `boss` で出現位置を指定
-- **調べる物**: `data/areas.ts` の `objects` に置き、ストーリーの `touch` イベントで台詞を付ける
+- **調べる物**: `data/areas.ts` の `objects` に置き、ストーリーの `touch` イベントで台詞を付ける。`loot` を付けると宝箱（1周に1回）、`hidden` はイベント（spawnObject）で出す物、`hideWhen` はフラグで消える物
+- **水**: 浅瀬タイル（`%`）と水たまりは入ると遅くなる（ダメージなし）。遅くなる割合と潮の満ち引きの周期は `config/balance.ts` の WATER、潮だまりの位置はエリアの `tideMarker` の文字
 - **エリア・出入口**: `data/areas.ts` の `exits` に「踏む文字・行き先・出現位置の文字」を書く
 - **町の NPC**: `data/areas.ts` の `npcs` に追加（見た目は `data/sprites.ts` の personSprite）

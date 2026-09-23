@@ -25,6 +25,7 @@ const list: ItemBaseDef[] = [
   { id: 'navi_old', name: '古いカーナビ', slot: 'accessory', icon: 'icon_navi', stats: { critRate: 0.02 }, minLevel: 1 },
 
   // ---- イベント専用（ランダムドロップには出ない）
+  { id: 'memory_crystal', name: '記憶の結晶', slot: 'accessory', icon: 'icon_memory', stats: { maxHp: 40, critRate: 0.05, critDamage: 0.2 }, minLevel: 1, unique: true },
   { id: 'varg_fang', name: 'ヴァルグの骨牙', slot: 'accessory', icon: 'icon_fang', stats: { atk: 6, critDamage: 0.2 }, minLevel: 1, unique: true },
 ];
 

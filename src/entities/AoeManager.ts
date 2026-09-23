@@ -47,14 +47,27 @@ export class AoeManager {
       a.elapsed += dt;
       // 出現待ち
       if (a.elapsed < 0) continue;
+      const pl = this.world.player;
+      // 潜航：しばらくプレイヤーを追いかけてから止まる
+      if (a.spec.follow && a.elapsed < a.spec.follow && !pl.dead) {
+        const k = Math.min(1, dt * 5);
+        a.spec.x += (pl.x - a.spec.x) * k;
+        a.spec.y += (pl.y - a.spec.y) * k;
+      }
+      // 渦：範囲内のプレイヤーを中心へ引き寄せる
+      if (a.spec.pull && !pl.dead && this.contains(a.spec, pl.x, pl.y, 0)) {
+        const ang = Math.atan2(a.spec.y - pl.y, a.spec.x - pl.x);
+        this.world.pushPlayer(Math.cos(ang) * a.spec.pull, Math.sin(ang) * a.spec.pull);
+      }
       const p = Math.min(1, a.elapsed / a.spec.duration);
       this.draw(a, p, 0);
       if (p >= 1) {
         a.done = true;
-        a.flash = a.spec.safe ? 0 : TELEGRAPH.flashTime;
-        if (a.spec.safe) continue;
+        a.flash = a.spec.safe || a.spec.noDamage ? 0 : TELEGRAPH.flashTime;
+        a.spec.onResolve?.(a.spec);
+        if (a.spec.safe || a.spec.noDamage) continue;
         if (a.spec.effect) this.world.showAoeEffect(a.spec);
-        const pl = this.world.player;
+        if (a.spec.leaveWater) this.world.spawnWater(a.spec.x, a.spec.y, a.spec.leaveWater.radius, a.spec.leaveWater.duration);
         if (this.contains(a.spec, pl.x, pl.y, pl.radius)) this.world.damagePlayer(a.spec.power, a.spec.x, a.spec.y);
       }
     }
@@ -106,6 +119,8 @@ export class AoeManager {
         const len = s.length + r;
         return (Math.abs(along) <= len && Math.abs(side) <= hw) || (Math.abs(side) <= len && Math.abs(along) <= hw);
       }
+      case 'rect':
+        return Math.abs(along) <= s.length / 2 + r && Math.abs(side) <= s.width / 2 + r;
     }
   }
 
@@ -149,6 +164,10 @@ export class AoeManager {
         else [along, side] = [w, t];
         break;
       }
+      case 'rect':
+        along = (Math.random() - 0.5) * s.length;
+        side = (Math.random() - 0.5) * s.width;
+        break;
     }
     return { x: spec.x + along * cos - side * sin, y: spec.y + along * sin + side * cos };
   }
@@ -172,8 +191,10 @@ export class AoeManager {
     }
     // grow: 範囲そのものが外へ広がっていく（必殺技）
     const outline = spec.grow ? Math.min(1, 0.15 + progress * 0.85) : 1;
-    this.fillShape(g, spec, spec.shape, outline, T.fillColor, T.baseAlpha + flash * T.flashAlpha);
-    if (!a.done) this.fillShape(g, spec, spec.shape, progress * outline, T.fillColor, T.progressAlpha);
+    // 弾の軌道などの「表示だけ」の予兆は、ダメージ範囲と区別できるよう薄い青で描く
+    const fillColor = spec.noDamage && !spec.onResolve ? 0x41a6f6 : T.fillColor;
+    this.fillShape(g, spec, spec.shape, outline, fillColor, T.baseAlpha + flash * T.flashAlpha);
+    if (!a.done) this.fillShape(g, spec, spec.shape, progress * outline, fillColor, T.progressAlpha);
     g.lineStyle(1, T.edgeColor, T.edgeAlpha * (a.done ? flash : 1));
     this.strokeShape(g, spec, spec.shape, outline);
   }
@@ -212,6 +233,10 @@ export class AoeManager {
         g.fillPoints(pts, true);
         break;
       }
+      case 'rect':
+        // 手前の辺（向きの反対側）から奥へ塗っていく
+        g.fillPoints(this.lineCorners(spec.x, spec.y, spec.angle, -s.length / 2, -s.length / 2 + s.length * scale, s.width), true);
+        break;
       case 'cross': {
         const L = s.length * scale;
         g.fillPoints(this.lineCorners(spec.x, spec.y, spec.angle, -L, L, s.width), true);
@@ -242,6 +267,9 @@ export class AoeManager {
       case 'ring':
         g.strokeCircle(spec.x, spec.y, s.inner);
         g.strokeCircle(spec.x, spec.y, s.outer * scale);
+        break;
+      case 'rect':
+        g.strokePoints(this.lineCorners(spec.x, spec.y, spec.angle, -s.length / 2, s.length / 2, s.width), true, true);
         break;
       case 'cross':
         g.strokePoints(this.lineCorners(spec.x, spec.y, spec.angle, -s.length, s.length, s.width), true, true);
