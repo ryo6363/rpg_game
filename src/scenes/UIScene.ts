@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONTROLS, DISPLAY, EXP } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
+import { HudState } from '../core/HudState';
 import type { ItemInstance } from '../core/types';
 import { viewport } from '../core/Viewport';
 import { JOBS } from '../data/jobs';
@@ -9,6 +10,7 @@ import { ActionButtons } from '../input/ActionButtons';
 import { InputState } from '../input/InputState';
 import { VirtualStick } from '../input/VirtualStick';
 import { expToNext } from '../systems/Progression';
+import { openOverlay } from '../ui/overlay';
 import { applyColor, rarityTextColor } from '../ui/rarityStyle';
 import { createText } from '../ui/text';
 
@@ -168,10 +170,23 @@ export class UIScene extends Phaser.Scene {
   }
 
   private openInventory() {
-    InputState.reset();
-    this.scene.pause('Field');
-    this.scene.launch('Inventory');
-    this.scene.sleep();
+    openOverlay(this, 'Inventory');
+  }
+
+  /** スキルボタンの表示を HudState に合わせる */
+  private syncSkillButtons() {
+    this.skillIndices.forEach((bi, i) => {
+      const s = HudState.skills[i];
+      const b = this.buttons.buttons[bi];
+      const locked = !s || !s.unlocked || !HudState.skillsEnabled;
+      b.locked = locked;
+      b.cooldown = s?.cooldown ?? 0;
+      const label = !s ? '' : s.unlocked ? s.short : `Lv${s.unlockLevel}`;
+      this.buttons.setLabel(bi, label);
+    });
+    const atk = this.buttons.buttons[this.attackIndex];
+    atk.locked = !HudState.attackEnabled;
+    this.buttons.setLabel(this.attackIndex, HudState.interactLabel ?? '攻撃');
   }
 
   private drawLevel() {
@@ -245,6 +260,7 @@ export class UIScene extends Phaser.Scene {
     }
     InputState.attackHeld = this.buttons.isHeld(this.attackIndex) || k.J.isDown || k.SPACE.isDown;
 
+    this.syncSkillButtons();
     this.buttons.draw();
     if (this.fpsText) this.fpsText.setText(`${Math.round(this.game.loop.actualFps)}fps`);
   }

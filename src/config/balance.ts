@@ -107,3 +107,34 @@ export const AUTO_EQUIP = {
   defenseWeight: 0.5,
   speedWeight: 0.3,
 } as const;
+
+/** 装備の強化（町の整備士） */
+export const UPGRADE = {
+  maxLevel: 10,
+  /** +1 ごとの基本性能の上昇率 */
+  statPerLevel: 0.1,
+  /** 費用 = baseCost[レアリティ] × (1 + アイテムレベル × 0.2) × costGrowth ^ 現在の強化値 */
+  baseCost: { normal: 10, magic: 20, rare: 40, legendary: 80 },
+  costGrowth: 1.5,
+} as const;
+
+/** 町 */
+export const TOWN = {
+  /** NPC に話しかけられる距離 */
+  talkRange: 22,
+} as const;
+
+/** 敵の攻撃の予兆範囲（AoE）の見た目 */
+export const TELEGRAPH = {
+  /** 範囲全体のうっすらした塗り */
+  fillColor: 0xff7a2f,
+  baseAlpha: 0.16,
+  /** 判定までの進み具合を示す内側の塗り */
+  progressAlpha: 0.3,
+  /** ふちの線 */
+  edgeColor: 0xffb070,
+  edgeAlpha: 0.85,
+  /** 判定の瞬間の光 */
+  flashAlpha: 0.6,
+  flashTime: 0.15,
+} as const;

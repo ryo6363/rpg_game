@@ -18,8 +18,10 @@ import {
   statsIfEquipped,
   statsIfUnequipped,
   unequip,
+  upgradeItem,
 } from '../systems/Equipment';
-import { formatStat, itemLines, itemSlot, sellPrice } from '../systems/Items';
+import { formatStat, itemDisplayName, itemLines, itemSlot, sellPrice, upgradeCost } from '../systems/Items';
+import { closeOverlay } from '../ui/overlay';
 import { applyColor, rainbowNow, rarityTextColor } from '../ui/rarityStyle';
 import { createText } from '../ui/text';
 
@@ -39,9 +41,15 @@ export class InventoryScene extends Phaser.Scene {
   private notice: string | null = null;
   /** 虹色の枠を描くマス（レジェンダリー） */
   private rainbowCells: { g: Phaser.GameObjects.Graphics; x: number; y: number }[] = [];
+  /** upgrade: 整備士から開いたとき（強化ボタンを出す） */
+  private mode: 'normal' | 'upgrade' = 'normal';
 
   constructor() {
     super('Inventory');
+  }
+
+  init(data: { mode?: 'normal' | 'upgrade' }) {
+    this.mode = data?.mode ?? 'normal';
   }
 
   create() {
@@ -60,9 +68,7 @@ export class InventoryScene extends Phaser.Scene {
 
   private close() {
     SaveManager.save();
-    this.scene.stop();
-    this.scene.resume('Field');
-    this.scene.wake('UI');
+    closeOverlay(this);
   }
 
   // ------------------------------------------------------------ 描画
@@ -77,7 +83,8 @@ export class InventoryScene extends Phaser.Scene {
 
     // ---- ヘッダー
     const job = JOBS[gameState.currentJob];
-    this.text(left, y, `持ち物 ${gameState.inventory.length}/${LOOT.inventorySize}`, 8);
+    const title = this.mode === 'upgrade' ? '整備工場' : '持ち物';
+    this.text(left, y, `${title} ${gameState.inventory.length}/${LOOT.inventorySize}`, 8);
     this.text(right - 18, y + 1, `${gameState.gold} G`, 8, '#ffcd75').setOrigin(1, 0);
     this.button(right - 14, y - 1, 14, 12, '×', 0x333c57, true, () => this.close());
     y += 14;
@@ -144,7 +151,7 @@ export class InventoryScene extends Phaser.Scene {
     const meta = RARITY_META[item.rarity];
     const px = x + 4;
     let py = y + 3;
-    applyColor(this.text(px, py, item.name, 8), rarityTextColor(item.rarity));
+    applyColor(this.text(px, py, itemDisplayName(item), 8), rarityTextColor(item.rarity));
     py += 11;
     const where = sel.kind === 'equip' ? '・装備中' : '';
     this.text(px, py, `${meta.label}・${SLOT_META[base.slot].label}・iLv${item.itemLevel}${where}`, 6, '#94b0c2');
@@ -184,6 +191,21 @@ export class InventoryScene extends Phaser.Scene {
     // ---- ボタン
     const by = y + h - 16;
     const bw = Math.floor((w - 12) / 2);
+    if (this.mode === 'upgrade') {
+      // 整備士：ゴールドで +1 強化
+      const cost = upgradeCost(item);
+      const label =
+        cost === null
+          ? '最大まで強化済み'
+          : `強化 +${item.upgrade}→+${item.upgrade + 1}（${cost}G）${gameState.gold < cost ? ' 所持金不足' : ''}`;
+      const can = cost !== null && gameState.gold >= cost;
+      this.button(px, by - 16, w - 8, 13, label, 0xb8860b, can, () => {
+        if (upgradeItem(item)) {
+          this.notice = null;
+          this.refresh();
+        }
+      });
+    }
     if (sel.kind === 'bag') {
       this.button(px, by, bw, 13, '装備する', 0x257179, canEquip(item), () => {
         const slot = itemSlot(item);

@@ -3,10 +3,11 @@ import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { SaveManager } from '../core/SaveManager';
 import type { ArmorSlot, ItemInstance, JobId, Slot, Stats } from '../core/types';
+import { AFFIXES } from '../data/affixes';
 import { ITEM_BASES } from '../data/itemBases';
 import { SLOT_ORDER } from '../data/itemMeta';
 import { JOBS } from '../data/jobs';
-import { itemSlot, sellPrice } from './Items';
+import { itemSlot, sellPrice, upgradeCost } from './Items';
 import { calcPlayerStats } from './StatCalculator';
 
 // 装備の付け替え・売却・ステータス計算の窓口
@@ -165,4 +166,26 @@ export function autoEquipBest(jobId: JobId = gameState.currentJob): number {
   }
   if (changes > 0) changed();
   return changes;
+}
+
+/** 装備によるスキル威力の上昇（スキルid → 加算する割合） */
+export function skillBonuses(jobId: JobId = gameState.currentJob): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of equippedItems(jobId)) {
+    for (const a of item.affixes) {
+      const def = AFFIXES[a.id];
+      if (def?.skill) out[def.skill] = (out[def.skill] ?? 0) + a.value;
+    }
+  }
+  return out;
+}
+
+/** ゴールドを払って +1 強化。できなければ false */
+export function upgradeItem(item: ItemInstance): boolean {
+  const cost = upgradeCost(item);
+  if (cost === null || gameState.gold < cost) return false;
+  gameState.gold -= cost;
+  item.upgrade++;
+  changed();
+  return true;
 }

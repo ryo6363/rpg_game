@@ -19,7 +19,8 @@ npm run dev
 |---|---|---|
 | 移動 | 画面左下を触ってドラッグ（仮想スティック） | WASD / 矢印キー |
 | 通常攻撃 | 右下「攻撃」を押しっぱなし（最寄りの敵へ自動で向く） | J / Space |
-| スキル | 右下 1〜3 | 1 / 2 / 3 |
+| スキル | 右下の青いボタン（Lv1 / 3 / 6 で解放。暗い扇形はクールダウン） | 1 / 2 / 3 |
+| 話す（町） | NPC に近づくと攻撃ボタンが「話す」になる | J / Space |
 | 持ち物・装備 | 右上のカバンボタン | I（閉じるのは I / Esc） |
 
 ## ビルド
@@ -53,14 +54,18 @@ src/
 ├─ entities/           Player / Enemy / ダメージ数字
 ├─ input/              仮想スティック・ボタン・入力状態
 ├─ ui/                 UI 部品
-└─ scenes/             Boot / Title / Field / UI
+└─ scenes/             Boot / Title / Town・Field（共通の土台 WorldScene）/ UI / Inventory / JobSelect
 ```
 
 ### 拡張のしかた
 
 - **敵を増やす**: `data/sprites.ts` に見た目、`data/enemies.ts` に定義を追加し、`data/areas.ts` の `enemies` に登録
+- **敵の攻撃範囲（予兆）**: `data/enemies.ts` の `attack` に形（円 circle／扇 cone／直線 line）と溜め時間を書く。見た目の色は `config/balance.ts` の TELEGRAPH
 - **新しい敵の動き**: `systems/EnemyAI.ts` に関数を追加して `ENEMY_AI` に登録
 - **装備の種類を増やす**: `data/itemBases.ts` に追加（アイコンは `data/sprites.ts` の ICON_SPRITES）
 - **追加効果を増やす**: `data/affixes.ts` に追加。ドロップ率・レアリティ確率などは `config/balance.ts` の LOOT
 - **スキルを増やす**: `data/skills.ts` に定義。新しい種類（弾・範囲など）は `systems/SkillRunner.ts` に処理を追加
-- **マップ**: `data/maps.ts` に文字列で描く（文字の意味は `data/tiles.ts`）
+- **スキルを装備で強化**: 各ジョブのスキルに「威力 +x%」の追加効果が自動で作られる（`data/affixes.ts`）
+- **マップ**: `data/maps.ts` に文字列で描く（文字の意味は `data/tiles.ts`）。タイル以外の文字は目印（出現位置・NPC の位置）
+- **エリア・出入口**: `data/areas.ts` の `exits` に「踏む文字・行き先・出現位置の文字」を書く
+- **町の NPC**: `data/areas.ts` の `npcs` に追加（見た目は `data/sprites.ts` の personSprite）

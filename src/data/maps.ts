@@ -2,6 +2,31 @@
 // '@' はプレイヤーの開始位置
 
 export const MAPS: Record<string, string[]> = {
+  // 拠点の町。^ = 北の門（草原へ）、s = 草原から戻ったときの位置、g/m/n = NPC
+  town: [
+    'TTTTTTTT^^^^TTTTTTTT',
+    'TTT.....::::.....TTT',
+    'T.......::s:.......T',
+    'T..RRRRR::::RRRRR..T',
+    'T..RRRRR::::RRRRR..T',
+    'T..HHDHH::::HHDHH..T',
+    'T...:g::::::::m:...T',
+    'T..::::::::::::::..T',
+    'T..:::::~~~~:::::..T',
+    'T..::*::~~~~::*::..T',
+    'T..:::::~~~~:::::..T',
+    'T..::::::::::::::..T',
+    'T..:::::n::@:::::..T',
+    'T..::::::::::::::..T',
+    'T..RRRRR....RRRRR..T',
+    'T..RRRRR....RRRRR..T',
+    'T..HHHHH....HHDHH..T',
+    'T*........,.......*T',
+    'TT..,....*......,.TT',
+    'TTTTTTTTTTTTTTTTTTTT',
+  ],
+
+  // _ = 南の門（町へ）
   ch1_field1: [
     'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
     'TTTT......,,....==....,,...TTTTT',
@@ -49,7 +74,7 @@ export const MAPS: Record<string, string[]> = {
     'TT..,,.........=....*........TTT',
     'T..............=.............TTT',
     'T..............@...............T',
-    'TTTT...........=...........TTTTT',
+    'TTTT..........___..........TTTTT',
     'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
   ],
 };

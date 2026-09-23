@@ -1,69 +1,42 @@
 import Phaser from 'phaser';
-import { DISPLAY, ENEMY, LOOT, PLAYER } from '../config/balance';
+import { ENEMY, LOOT } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
-import { gameState } from '../core/GameState';
-import type { AreaDef, ItemInstance } from '../core/types';
-import { viewport } from '../core/Viewport';
-import { AREAS } from '../data/areas';
+import type { ItemInstance } from '../core/types';
 import { ENEMIES } from '../data/enemies';
-import { MAPS } from '../data/maps';
-import { MAP_MARKERS, TILE_TYPES } from '../data/tiles';
 import { Enemy } from '../entities/Enemy';
-import { FloatingTextPool } from '../entities/FloatingTextPool';
 import { LootDrop } from '../entities/LootDrop';
-import { Player } from '../entities/Player';
-import { InputState } from '../input/InputState';
 import { rollDamage } from '../systems/Combat';
 import { addToInventory } from '../systems/Equipment';
+import { weightedPick } from '../systems/Items';
 import { rollDrop } from '../systems/LootGenerator';
 import { gainExp, killExp } from '../systems/Progression';
-import type { CombatWorld } from '../systems/CombatWorld';
 import { RAINBOW } from '../ui/rarityStyle';
+import { WorldScene, type WorldData } from './WorldScene';
 
-interface FieldData {
-  areaId: string;
-}
-
-/** フィールド／ボスエリア共通のシーン。data/areas.ts の定義から構築する */
-export class FieldScene extends Phaser.Scene implements CombatWorld {
-  player!: Player;
-  private area!: AreaDef;
+/** フィールド／ボスエリア。data/areas.ts の定義から構築する */
+export class FieldScene extends WorldScene {
   private enemies: Enemy[] = [];
   private liveEnemies: Enemy[] = [];
   private enemyGroup!: Phaser.Physics.Arcade.Group;
-  private walkable: { x: number; y: number }[] = [];
-  private startPos = { x: 0, y: 0 };
   private respawnTimers: number[] = [];
   private drops: LootDrop[] = [];
   private fullWarnAt = 0;
   private hpBars!: Phaser.GameObjects.Graphics;
-  private floatText!: FloatingTextPool;
-  private sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor() {
     super('Field');
   }
 
-  get gameScene(): Phaser.Scene {
-    return this;
-  }
-
-  init(data: FieldData) {
-    this.area = AREAS[data.areaId ?? 'ch1_field1'];
+  init(data: WorldData) {
+    super.init(data);
     this.enemies = [];
     this.liveEnemies = [];
     this.respawnTimers = [];
-    this.walkable = [];
     this.drops = [];
   }
 
   create() {
-    InputState.reset();
-    this.buildMap();
-
-    this.player = new Player(this, this.startPos.x, this.startPos.y);
-    this.player.setJob(gameState.currentJob);
-    this.physics.add.collider(this.player, this.layer);
+    this.createWorld();
 
     this.enemyGroup = this.physics.add.group();
     for (let i = 0; i < this.area.maxEnemies; i++) {
@@ -71,121 +44,28 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
       this.enemies.push(e);
       this.enemyGroup.add(e);
     }
-    this.physics.add.collider(this.enemyGroup, this.layer);
+    this.physics.add.collider(this.enemyGroup, this.map.layer);
     this.physics.add.collider(this.enemyGroup, this.enemyGroup);
     this.physics.add.collider(this.player, this.enemyGroup);
     for (let i = 0; i < this.area.maxEnemies; i++) this.spawnEnemy(true);
 
     this.hpBars = this.add.graphics().setDepth(99999);
-    this.floatText = new FloatingTextPool(this);
-    this.sparks = this.add.particles(0, 0, 'fx_spark', {
-      speed: { min: 30, max: 90 },
-      lifespan: 280,
-      scale: { start: 1, end: 0 },
-      emitting: false,
-    });
-    this.sparks.setDepth(99998);
-
-    const cam = this.cameras.main;
-    cam.setZoom(viewport.zoom).setRoundPixels(true).setBackgroundColor('#1a1c2c');
-    cam.setBounds(0, 0, this.mapW, this.mapH);
-    cam.startFollow(this.player, true, 0.2, 0.2);
-
-    const onViewport = () => cam.setZoom(viewport.zoom);
-    const onEquip = () => {
-      this.player.recalcStats();
-      this.emitHp();
-    };
-    const onLevelUp = (level: number) => {
-      this.player.recalcStats(true);
-      this.emitHp();
-      this.floatText.show(this.player.x, this.player.y - 12, `LEVEL UP! Lv${level}`, '#a7f070', true);
-      this.sparks.explode(20, this.player.x, this.player.y);
-    };
-    EventBus.on(GameEvents.ViewportChanged, onViewport);
-    EventBus.on(GameEvents.EquipmentChanged, onEquip);
-    EventBus.on(GameEvents.LevelUp, onLevelUp);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      EventBus.off(GameEvents.ViewportChanged, onViewport);
-      EventBus.off(GameEvents.EquipmentChanged, onEquip);
-      EventBus.off(GameEvents.LevelUp, onLevelUp);
-    });
-
-    if (!this.scene.isActive('UI')) this.scene.launch('UI');
-    this.scene.bringToTop('UI');
-    // UIScene の create が終わってから初期値を通知する
-    this.time.delayedCall(0, () => this.emitHp());
-  }
-
-  // ------------------------------------------------------------ マップ
-
-  private layer!: Phaser.Tilemaps.TilemapLayer;
-  private mapW = 0;
-  private mapH = 0;
-
-  private buildMap() {
-    const padX = DISPLAY.mapPadX;
-    const padY = DISPLAY.mapPadY;
-    const src = MAPS[this.area.map];
-    const wall = MAP_MARKERS.border;
-    const fullW = src[0].length + padX * 2;
-    const rows = [
-      ...Array.from({ length: padY }, () => wall.repeat(fullW)),
-      ...src.map((r) => wall.repeat(padX) + r + wall.repeat(padX)),
-      ...Array.from({ length: padY }, () => wall.repeat(fullW)),
-    ];
-    const ts = DISPLAY.tileSize;
-    const charToIndex = new Map(TILE_TYPES.map((t, i) => [t.char, i]));
-    const data = rows.map((row, y) =>
-      [...row].map((ch, x) => {
-        if (ch === MAP_MARKERS.playerStart) {
-          this.startPos = { x: x * ts + ts / 2, y: y * ts + ts / 2 };
-          return 0;
-        }
-        return charToIndex.get(ch) ?? 0;
-      }),
-    );
-    data.forEach((row, y) =>
-      row.forEach((idx, x) => {
-        if (!TILE_TYPES[idx].collide) this.walkable.push({ x: x * ts + ts / 2, y: y * ts + ts / 2 });
-      }),
-    );
-
-    const map = this.make.tilemap({ data, tileWidth: ts, tileHeight: ts });
-    const tileset = map.addTilesetImage('tiles', 'tiles', ts, ts, 0, 0)!;
-    this.layer = map.createLayer(0, tileset, 0, 0)!;
-    this.layer.setCollision(TILE_TYPES.flatMap((t, i) => (t.collide ? [i] : [])));
-    this.layer.setDepth(-10000);
-    this.mapW = map.widthInPixels;
-    this.mapH = map.heightInPixels;
-    this.physics.world.setBounds(0, 0, this.mapW, this.mapH);
   }
 
   // ------------------------------------------------------------ 敵の出現
 
   private spawnEnemy(initial = false) {
     const e = this.enemies.find((en) => !en.active);
-    if (!e) return;
+    if (!e || this.area.enemies.length === 0) return;
     // プレイヤーから一定以上離れた場所
     const minD = initial ? 80 : ENEMY.respawnMinDistance;
-    let pos = this.walkable[0];
+    let pos = this.map.walkable[0];
     for (let tries = 0; tries < 30; tries++) {
-      pos = Phaser.Utils.Array.GetRandom(this.walkable);
+      pos = Phaser.Utils.Array.GetRandom(this.map.walkable);
       if (Math.hypot(pos.x - this.player.x, pos.y - this.player.y) >= minD) break;
     }
-    const def = ENEMIES[this.pickEnemyId()];
-    e.spawn(def, pos.x, pos.y, this.area.level);
-  }
-
-  private pickEnemyId(): string {
-    const list = this.area.enemies;
-    const total = list.reduce((s, e) => s + e.weight, 0);
-    let r = Math.random() * total;
-    for (const e of list) {
-      r -= e.weight;
-      if (r <= 0) return e.id;
-    }
-    return list[0].id;
+    const pick = weightedPick(this.area.enemies, (en) => en.weight)!;
+    e.spawn(ENEMIES[pick.id], pos.x, pos.y, this.area.level);
   }
 
   // ------------------------------------------------------------ CombatWorld
@@ -195,6 +75,7 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
   }
 
   damageEnemy(enemy: Enemy, power: number, fromX: number, fromY: number) {
+    if (!enemy.alive) return;
     const res = rollDamage(this.player.stats, power, enemy.defense);
     const died = enemy.applyDamage(res.amount, fromX, fromY);
     this.floatText.show(enemy.x, enemy.y - 6, `${res.amount}`, res.crit ? '#ffcd75' : '#f4f4f4', res.crit);
@@ -207,17 +88,6 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
       const item = rollDrop({ itemLevel: this.area.level, jobId: this.player.jobId, dropRate: enemy.def.dropRate });
       if (item) this.spawnDrop(item, enemy.x, enemy.y);
     }
-  }
-
-  damagePlayer(rawAtk: number, fromX: number, fromY: number) {
-    const p = this.player;
-    if (p.isInvulnerable) return;
-    const res = rollDamage({ atk: rawAtk, critRate: 0, critDamage: 0 }, 1, p.stats.def);
-    const died = p.applyDamage(res.amount);
-    this.floatText.show(p.x, p.y - 8, `${res.amount}`, '#b13e53');
-    EventBus.emit(GameEvents.PlayerDamaged, res.amount, fromX, fromY);
-    this.emitHp();
-    if (died) this.onPlayerDied();
   }
 
   // ------------------------------------------------------------ ドロップ
@@ -255,19 +125,6 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
     }
   }
 
-  private onPlayerDied() {
-    EventBus.emit(GameEvents.PlayerDied);
-    this.tweens.add({ targets: this.player, alpha: 0.2, angle: 90, duration: 400 });
-    this.time.delayedCall(PLAYER.respawnTime * 1000, () => {
-      this.player.revive(this.startPos.x, this.startPos.y);
-      this.emitHp();
-    });
-  }
-
-  private emitHp() {
-    EventBus.emit(GameEvents.PlayerHpChanged, this.player.hp, this.player.stats.maxHp);
-  }
-
   // ------------------------------------------------------------ 毎フレーム
 
   update(_time: number, deltaMs: number) {
@@ -276,7 +133,7 @@ export class FieldScene extends Phaser.Scene implements CombatWorld {
     this.liveEnemies.length = 0;
     for (const e of this.enemies) if (e.alive) this.liveEnemies.push(e);
 
-    this.player.updatePlayer(dt, this);
+    this.updateWorld(dt);
     for (const e of this.liveEnemies) e.updateEnemy(dt, this);
 
     // 再出現

@@ -16,6 +16,8 @@ export const GameEvents = {
   ExpChanged: 'exp-changed',
   /** (level: number) */
   LevelUp: 'level-up',
+  /** () ジョブを切り替えた */
+  JobChanged: 'job-changed',
   /** () 装備の付け替え・売却 */
   EquipmentChanged: 'equipment-changed',
   /** (item: ItemInstance) 拾った */

@@ -22,6 +22,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   stateTimer = 0;
   targetX = 0;
   targetY = 0;
+  /** 攻撃の向き（予兆を出した時点で固定） */
+  attackAngle = 0;
   private hitFlash = 0;
   private shadow: Phaser.GameObjects.Image;
 

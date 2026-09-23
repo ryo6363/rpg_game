@@ -1,6 +1,7 @@
 import type { ItemInstance, JobId, Stats, StatKey } from '../core/types';
 import { AFFIXES } from '../data/affixes';
 import { JOBS } from '../data/jobs';
+import { itemStats } from './Items';
 
 /**
  * 最終ステータス = (ジョブ基礎 + Lv成長 + 装備の足し算) × (1 + 装備の%上昇)
@@ -15,10 +16,10 @@ export function calcPlayerStats(jobId: JobId, level: number, equipped: readonly 
 
   const pct: Partial<Record<StatKey, number>> = {};
   for (const item of equipped) {
-    for (const [k, v] of Object.entries(item.stats) as [StatKey, number][]) stats[k] += v;
+    for (const [k, v] of Object.entries(itemStats(item)) as [StatKey, number][]) stats[k] += v;
     for (const a of item.affixes) {
       const def = AFFIXES[a.id];
-      if (!def) continue;
+      if (!def || def.skill) continue;
       if (def.mode === 'flat') stats[def.stat] += a.value;
       else pct[def.stat] = (pct[def.stat] ?? 0) + a.value;
     }

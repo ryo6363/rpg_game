@@ -11,6 +11,24 @@ function moveToward(e: Enemy, x: number, y: number, speed: number) {
   e.body.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
 }
 
+/** 攻撃開始：プレイヤーの方向を向き、予兆範囲を出して溜めに入る */
+function startAttack(e: Enemy, world: CombatWorld) {
+  const atk = e.def.attack;
+  const p = world.player;
+  e.attackAngle = Math.atan2(p.y - e.y, p.x - e.x);
+  e.body.setVelocity(0, 0);
+  e.setEnemyState('windup', atk.windup);
+  world.spawnAoe({
+    x: e.x,
+    y: e.y,
+    angle: e.attackAngle,
+    shape: atk.shape,
+    duration: atk.windup,
+    power: e.atk * (atk.power ?? 1),
+    owner: e,
+  });
+}
+
 /** 近接型：うろつく → 気づいたら追跡 → 溜めてから体当たり */
 const melee: AiHandler = (e, _dt, world) => {
   const p = world.player;
@@ -40,19 +58,16 @@ const melee: AiHandler = (e, _dt, world) => {
       if (p.dead || dist > def.aggroRange * 1.8) {
         e.setEnemyState('idle', 1);
       } else if (dist <= def.attackRange + p.radius + e.radius) {
-        e.body.setVelocity(0, 0);
-        e.setEnemyState('windup', def.windup);
+        startAttack(e, world);
       } else moveToward(e, p.x, p.y, def.moveSpeed);
       break;
 
     case 'windup':
+      // 予兆中は動かない。判定そのものは予兆範囲（AoeManager）が行う
       e.body.setVelocity(0, 0);
       if (e.stateTimer <= 0) {
-        // 体当たり
-        moveToward(e, p.x, p.y, 110);
-        if (dist <= def.attackRange + p.radius + e.radius + 6) {
-          world.damagePlayer(e.atk, e.x, e.y);
-        }
+        const lunge = def.attack.lunge ?? 0;
+        if (lunge > 0) e.body.setVelocity(Math.cos(e.attackAngle) * lunge, Math.sin(e.attackAngle) * lunge);
         e.setEnemyState('recover', def.recover);
       }
       break;

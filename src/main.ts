@@ -1,9 +1,15 @@
 import Phaser from 'phaser';
 import { EventBus, GameEvents } from './core/EventBus';
+import { gameState } from './core/GameState';
+import { HudState } from './core/HudState';
+import { InputState } from './input/InputState';
+import { createItem } from './systems/Items';
 import { updateViewport, viewport } from './core/Viewport';
 import { BootScene } from './scenes/BootScene';
 import { FieldScene } from './scenes/FieldScene';
 import { InventoryScene } from './scenes/InventoryScene';
+import { JobSelectScene } from './scenes/JobSelectScene';
+import { TownScene } from './scenes/TownScene';
 import { TitleScene } from './scenes/TitleScene';
 import { UIScene } from './scenes/UIScene';
 
@@ -45,7 +51,7 @@ const game = new Phaser.Game({
   physics: { default: 'arcade', arcade: { debug: false } },
   fps: { target: 60 },
   render: { powerPreference: 'high-performance', antialias: false },
-  scene: [BootScene, TitleScene, FieldScene, UIScene, InventoryScene],
+  scene: [BootScene, TitleScene, TownScene, FieldScene, UIScene, InventoryScene, JobSelectScene],
 });
 
 // ---- 画面サイズ変更（回転・アドレスバー表示切替など）
@@ -66,4 +72,9 @@ window.addEventListener('orientationchange', onResize);
 window.visualViewport?.addEventListener('resize', onResize);
 
 // 開発時のみ：コンソールからの動作確認用
-if (import.meta.env.DEV) (window as unknown as { __game: Phaser.Game }).__game = game;
+if (import.meta.env.DEV) {
+  Object.assign(window as unknown as Record<string, unknown>, {
+    __game: game,
+    __debug: { gameState, EventBus, GameEvents, InputState, HudState, createItem },
+  });
+}

@@ -1,4 +1,6 @@
 import type { AffixDef, Slot } from '../core/types';
+import { JOBS } from './jobs';
+import { SKILLS } from './skills';
 
 // 追加効果の定義。ここに追加するだけで抽選候補に入る
 // 値 = [min, max] の乱数 + perLevel × (アイテムレベル - 1)
@@ -15,6 +17,25 @@ const list: AffixDef[] = [
   { id: 'move_speed', stat: 'moveSpeed', mode: 'percent', min: 0.03, max: 0.06, perLevel: 0.002, slots: ['feet', 'accessory'], weight: 6, prefix: '疾風の' },
   { id: 'atk_speed', stat: 'attackSpeed', mode: 'percent', min: 0.04, max: 0.08, perLevel: 0.003, slots: ['weapon', 'hands', 'accessory'], weight: 6, prefix: '素早い' },
 ];
+
+// 「特定スキルの威力 +x%」は各ジョブのスキルから自動で作る。
+// 武装に付く場合は、その武装のジョブのスキルだけが候補になる（systems/Items.ts）
+for (const job of Object.values(JOBS)) {
+  for (const s of job.skills) {
+    list.push({
+      id: `skill_${s.id}`,
+      stat: 'atk',
+      mode: 'percent',
+      min: 0.1,
+      max: 0.2,
+      perLevel: 0.01,
+      slots: ['weapon', 'hands', 'accessory'],
+      weight: 2,
+      prefix: `${SKILLS[s.id].short}の`,
+      skill: s.id,
+    });
+  }
+}
 
 export const AFFIXES: Record<string, AffixDef> = Object.fromEntries(list.map((a) => [a.id, a]));
 

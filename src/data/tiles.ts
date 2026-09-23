@@ -15,10 +15,19 @@ export const TILE_TYPES: TileType[] = [
   { char: 'T', name: 'tree', collide: true },
   { char: 'o', name: 'rock', collide: true },
   { char: '~', name: 'water', collide: true },
+  // 町
+  { char: ':', name: 'stone', collide: false },
+  { char: 'R', name: 'roof', collide: true },
+  { char: 'H', name: 'wall', collide: true },
+  { char: 'D', name: 'door', collide: true },
+  { char: 'F', name: 'fence', collide: true },
+  /** 出入口。エリア定義の exits の文字もこのタイルで描く */
+  { char: '#', name: 'gate', collide: false },
 ];
 
-/** マップ上で特別な意味を持つ文字（タイルとしては草で描画） */
+/** マップ上で特別な意味を持つ文字 */
 export const MAP_MARKERS = {
+  /** 既定の出現位置（エリアの床タイルで描く） */
   playerStart: '@',
   /** マップ外周の余白に使うタイル */
   border: 'T',

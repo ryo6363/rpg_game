@@ -25,7 +25,7 @@ export class TitleScene extends Phaser.Scene {
     EventBus.on(GameEvents.ViewportChanged, layout);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off(GameEvents.ViewportChanged, layout));
 
-    const start = () => this.scene.start('Field', { areaId: 'ch1_field1' });
+    const start = () => this.scene.start('Town', { areaId: 'town' });
     this.input.once('pointerup', start);
     this.input.keyboard?.once('keydown', start);
   }

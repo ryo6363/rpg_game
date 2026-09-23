@@ -12,8 +12,9 @@ export const ENEMIES: Record<string, EnemyDef> = {
     def: 2,
     moveSpeed: 30,
     aggroRange: 90,
-    attackRange: 13,
-    windup: 0.45,
+    attackRange: 16,
+    // 前方への体当たり。予兆（直線）を見てから横に避けられる
+    attack: { shape: { type: 'line', length: 30, width: 14 }, windup: 0.8, lunge: 150 },
     recover: 0.6,
     bodyRadius: 6,
     exp: 5,

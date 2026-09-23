@@ -58,6 +58,13 @@ export class ActionButtons {
     return index;
   }
 
+  setLabel(index: number, label: string) {
+    const b = this.buttons[index];
+    if (b.label === label) return;
+    b.label = label;
+    b.text.setText(label).setFontSize(b.r > 14 || label.length <= 2 ? (b.r > 14 ? 8 : 6) : 5);
+  }
+
   isHeld(index: number) {
     return this.buttons[index]?.pressed ?? false;
   }

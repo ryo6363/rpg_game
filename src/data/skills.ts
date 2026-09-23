@@ -1,10 +1,14 @@
 import type { SkillDef } from '../core/types';
 
 // スキル定義。kind ごとの実際の処理は systems/SkillRunner.ts
-export const SKILLS: Record<string, SkillDef> = {
-  warrior_slash: {
+// どのジョブがどのスキルを使うか・解放レベルは data/jobs.ts
+
+const list: SkillDef[] = [
+  // ---------------------------------------------------------------- 戦士（バンパー）
+  {
     id: 'warrior_slash',
     name: 'バンパーアタック',
+    short: '攻',
     kind: 'meleeArc',
     power: 1.0,
     cooldown: 0,
@@ -12,4 +16,129 @@ export const SKILLS: Record<string, SkillDef> = {
     arc: 150,
     effect: 'fx_slash',
   },
-};
+  {
+    id: 'warrior_tackle',
+    name: 'ブーストタックル',
+    short: '突進',
+    kind: 'dash',
+    power: 2.0,
+    cooldown: 4,
+    dashSpeed: 220,
+    dashTime: 0.28,
+    radius: 12,
+    color: 0xef7d57,
+  },
+  {
+    id: 'warrior_spin',
+    name: 'スピンターン',
+    short: '回転',
+    kind: 'nova',
+    power: 1.6,
+    cooldown: 6,
+    radius: 34,
+    color: 0xf4f4f4,
+  },
+  {
+    id: 'warrior_nitro',
+    name: 'ニトロ',
+    short: 'ニトロ',
+    kind: 'buff',
+    power: 0,
+    cooldown: 18,
+    color: 0x41a6f6,
+    buff: { stats: { attackSpeed: 1.5, moveSpeed: 1.3, atk: 1.2 }, duration: 6 },
+  },
+
+  // ---------------------------------------------------------------- 魔法使い（魔導エンジン）
+  {
+    id: 'mage_orb',
+    name: '魔導弾',
+    short: '攻',
+    kind: 'projectile',
+    power: 1.0,
+    cooldown: 0,
+    color: 0xc58cff,
+    projectile: { sprite: 'fx_orb', speed: 130, distance: 110, explodeRadius: 12, hitRadius: 4 },
+  },
+  {
+    id: 'mage_flame',
+    name: 'フレイムバースト',
+    short: '炎',
+    kind: 'area',
+    power: 2.6,
+    cooldown: 5,
+    radius: 26,
+    delay: 0.45,
+    color: 0xef7d57,
+  },
+  {
+    id: 'mage_scatter',
+    name: '拡散魔導弾',
+    short: '拡散',
+    kind: 'projectile',
+    power: 1.1,
+    cooldown: 4,
+    color: 0xc58cff,
+    projectile: { sprite: 'fx_orb', speed: 140, distance: 100, count: 5, spread: 70, explodeRadius: 10, hitRadius: 4 },
+  },
+  {
+    id: 'mage_thunder',
+    name: 'サンダーストーム',
+    short: '雷',
+    kind: 'area',
+    power: 1.8,
+    cooldown: 12,
+    radius: 18,
+    delay: 0.3,
+    strikes: 6,
+    scatter: 40,
+    color: 0xffd23f,
+  },
+
+  // ---------------------------------------------------------------- 狩人（ボウガン砲台）
+  {
+    id: 'hunter_bolt',
+    name: '連射ボルト',
+    short: '攻',
+    kind: 'projectile',
+    power: 0.8,
+    cooldown: 0,
+    color: 0xffcd75,
+    projectile: { sprite: 'fx_bolt', speed: 230, distance: 130, hitRadius: 3 },
+  },
+  {
+    id: 'hunter_triple',
+    name: '三連ボルト',
+    short: '三連',
+    kind: 'projectile',
+    power: 1.1,
+    cooldown: 3,
+    color: 0xffcd75,
+    projectile: { sprite: 'fx_bolt', speed: 240, distance: 130, count: 3, spread: 24, hitRadius: 3 },
+  },
+  {
+    id: 'hunter_pierce',
+    name: '貫通ボルト',
+    short: '貫通',
+    kind: 'projectile',
+    power: 3.0,
+    cooldown: 6,
+    color: 0x73eff7,
+    projectile: { sprite: 'fx_bolt_big', speed: 280, distance: 170, pierce: 99, hitRadius: 5 },
+  },
+  {
+    id: 'hunter_rain',
+    name: 'ボルトレイン',
+    short: '雨',
+    kind: 'area',
+    power: 1.3,
+    cooldown: 12,
+    radius: 14,
+    delay: 0.25,
+    strikes: 10,
+    scatter: 36,
+    color: 0xffcd75,
+  },
+];
+
+export const SKILLS: Record<string, SkillDef> = Object.fromEntries(list.map((s) => [s.id, s]));

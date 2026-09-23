@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
-import { LOOT } from '../config/balance';
+import { LOOT, UPGRADE } from '../config/balance';
 import type { ItemInstance, Rarity, Slot, StatKey, Stats } from '../core/types';
 import { AFFIXES, LEGENDARY_TITLES, RARE_TITLES } from '../data/affixes';
 import { ITEM_BASES } from '../data/itemBases';
 import { STAT_META } from '../data/itemMeta';
+import { JOBS } from '../data/jobs';
+import { SKILLS } from '../data/skills';
 
 // 装備の生成・表示用の共通処理
 
@@ -38,7 +40,9 @@ export function createItem(baseId: string, rarity: Rarity, itemLevel: number): I
   // 追加効果（同じ効果は重複しない）
   const [minN, maxN] = LOOT.affixCount[rarity];
   const count = Phaser.Math.Between(minN, maxN);
-  const pool = Object.values(AFFIXES).filter((a) => a.slots.includes(base.slot));
+  const pool = Object.values(AFFIXES).filter(
+    (a) => a.slots.includes(base.slot) && (!a.skill || !base.weaponType || skillWeaponType(a.skill) === base.weaponType),
+  );
   const affixes: ItemInstance['affixes'] = [];
   for (let i = 0; i < count && pool.length > 0; i++) {
     const a = weightedPick(pool, (x) => x.weight)!;
@@ -86,13 +90,44 @@ export function formatStat(stat: StatKey, value: number, signed = false): string
 /** 装備の性能を表示用の行にする */
 export function itemLines(item: ItemInstance): { text: string; color: string }[] {
   const lines: { text: string; color: string }[] = [];
-  for (const [k, v] of Object.entries(item.stats) as [StatKey, number][]) {
+  for (const [k, v] of Object.entries(itemStats(item)) as [StatKey, number][]) {
     lines.push({ text: `${STAT_META[k].label} ${formatStat(k, v, true)}`, color: '#f4f4f4' });
   }
   for (const a of item.affixes) {
     const def = AFFIXES[a.id];
+    if (!def) continue;
     const val = def.mode === 'percent' ? `+${round(a.value * 100, 1)}%` : formatStat(def.stat, a.value, true);
-    lines.push({ text: `${STAT_META[def.stat].label} ${val}`, color: '#41a6f6' });
+    const label = def.skill ? `${SKILLS[def.skill].name}威力` : STAT_META[def.stat].label;
+    lines.push({ text: `${label} ${val}`, color: '#41a6f6' });
   }
   return lines;
+}
+
+/** 強化値を反映した基本性能 */
+export function itemStats(item: ItemInstance): Partial<Stats> {
+  const mul = 1 + (item.upgrade ?? 0) * UPGRADE.statPerLevel;
+  const out: Partial<Stats> = {};
+  for (const [k, v] of Object.entries(item.stats) as [StatKey, number][]) {
+    out[k] = mul === 1 ? v : roundStat(k, v * mul);
+  }
+  return out;
+}
+
+/** 表示用の名前（強化値付き） */
+export function itemDisplayName(item: ItemInstance): string {
+  return item.upgrade > 0 ? `${item.name} +${item.upgrade}` : item.name;
+}
+
+/** 次の強化にかかるゴールド（上限なら null） */
+export function upgradeCost(item: ItemInstance): number | null {
+  if (item.upgrade >= UPGRADE.maxLevel) return null;
+  return Math.round(
+    UPGRADE.baseCost[item.rarity] * (1 + item.itemLevel * 0.2) * Math.pow(UPGRADE.costGrowth, item.upgrade),
+  );
+}
+
+/** スキルがどの武装種のジョブのものか */
+function skillWeaponType(skillId: string) {
+  return Object.values(JOBS).find((j) => j.basicAttack === skillId || j.skills.some((s) => s.id === skillId))
+    ?.weaponType;
 }
