@@ -106,11 +106,15 @@ export type EnemyAiKind = 'melee' | 'boss';
  * - circle: 中心から半径 radius（offset だけ前方にずらせる）
  * - cone: 扇形。angle は全体の開き（度）
  * - line: 前方へ長さ length・幅 width の帯
+ * - ring: ドーナツ型。inner より内側（中心付近）は安全
+ * - cross: 中心から縦横に長さ length・幅 width の十字。斜めが安全
  */
 export type AoeShape =
   | { type: 'circle'; radius: number; offset?: number }
   | { type: 'cone'; radius: number; angle: number }
-  | { type: 'line'; length: number; width: number };
+  | { type: 'line'; length: number; width: number }
+  | { type: 'ring'; inner: number; outer: number }
+  | { type: 'cross'; length: number; width: number };
 
 /** 敵の攻撃 */
 export interface EnemyAttackDef {
@@ -125,12 +129,36 @@ export interface EnemyAttackDef {
   lungeTime?: number;
   /** 範囲の基点。self = 自分の位置（既定）/ target = 攻撃開始時のプレイヤーの位置 */
   at?: 'self' | 'target';
-  /** 判定の瞬間の演出（flame = 範囲いっぱいに炎が上がる） */
+  /** 判定の瞬間の演出 */
   effect?: AoeEffect;
+  /** 攻撃後の硬直（省略時は敵の recover） */
+  recover?: number;
+
+  /** 同じ攻撃を続けて何回出すか（毎回狙い直す） */
+  repeat?: number;
+  /** 連続攻撃の1回ごとの溜め時間（省略した回は windup） */
+  repeatWindups?: number[];
+  /**
+   * 円の予兆を count 個、interval 秒ずつずらして出す。
+   * around: player = プレイヤーの周り（1個目は足元）/ arena = ボスエリア全体（中心は出現位置）
+   */
+  scatter?: { count: number; radius: number; interval: number; around?: 'player' | 'arena' };
+  /** 飛び出し中にプレイヤーに触れたときのダメージ倍率（突進そのものの当たり判定） */
+  contact?: number;
+  /** 飛び出した軌跡に残る炎の床（触れている間ダメージが続く） */
+  trail?: { duration: number; radius: number; power: number; tick: number };
+  /** 特殊な攻撃（処理は systems/EnemyAI.ts） */
+  special?: 'arenaCollapse' | 'timeStop' | 'finale';
+  /** arenaCollapse: 残す安全地帯の数 / エリアの広さ */
+  safeSpots?: number;
+  arenaRadius?: number;
 }
 
-/** 予兆範囲の判定時の演出 */
-export type AoeEffect = 'flame';
+/**
+ * 予兆範囲の判定時の演出
+ * flame = 範囲いっぱいに炎 / meteor = 上空から落ちてくる / finale = 必殺技の大爆発（画面揺れ・効果音）
+ */
+export type AoeEffect = 'flame' | 'meteor' | 'finale';
 
 /** ボスの攻撃パターン */
 export interface BossPatternDef extends EnemyAttackDef {
@@ -146,15 +174,6 @@ export interface BossPatternDef extends EnemyAttackDef {
   leap?: boolean;
   /** 跳ぶ時間（秒。省略時 0.2） */
   leapTime?: number;
-  /** 同じ攻撃を続けて何回出すか（毎回狙い直す。暴れ回りなど） */
-  repeat?: number;
-  /**
-   * プレイヤーの周りのランダムな位置に円の予兆を count 個、interval 秒ずつずらして出す。
-   * radius は散らばる範囲（1個目はプレイヤーの足元）
-   */
-  scatter?: { count: number; radius: number; interval: number };
-  /** 攻撃後の硬直（省略時は敵の recover） */
-  recover?: number;
 }
 
 export interface EnemyDef {
@@ -189,6 +208,10 @@ export interface EnemyDef {
     phases: number[];
     /** 攻撃と攻撃の間の最短時間 */
     interval: number;
+    /** フェーズごとの攻撃間隔の倍率（[フェーズ1, 2, …]。小さいほど攻撃が速い） */
+    intervalByPhase?: number[];
+    /** そのフェーズに入ったら必ず次に使う技（フェーズ番号 → 技の id） */
+    forcedOnPhase?: Record<number, string>;
     /** 確定ドロップ */
     loot: { count: number; minRarity: Rarity };
   };
@@ -215,6 +238,10 @@ export interface AreaObjectDef {
   /** この周回数の範囲でだけ置く */
   minLoop?: number;
   maxLoop?: number;
+  /** ぶつかる（通り抜けられない） */
+  solid?: boolean;
+  /** このフラグが立っていたら絵のコマを変える */
+  frameWhen?: { flag: string; frame: number };
 }
 
 /** エリア間の出入口 */
@@ -224,13 +251,21 @@ export interface ExitDef {
   to: string;
   /** 移動先マップで出現する位置の文字（省略時は '@'） */
   arrive?: string;
+  /** このフラグが立つまで通れない */
+  requires?: string;
+  /** 通れないときのメッセージ */
+  lockedText?: string;
 }
 
 /** エリア定義（町・フィールド・ボスエリア） */
 export interface AreaDef {
   id: string;
   name: string;
+  /** どの章のエリアか（入ると章の進行が進む） */
+  chapter: number;
   type: 'town' | 'field';
+  /** マップ外周の余白に使うタイルの文字（省略時は木 'T'） */
+  border?: string;
   map: string;
   /** 目印の文字の下に敷く床タイルの文字 */
   floor: string;
@@ -260,6 +295,7 @@ export type StoryTrigger =
   | { type: 'areaEnter'; area: string }
   | { type: 'talk'; npc: string }
   | { type: 'touch'; object: string }
+  | { type: 'bossHit'; boss: string }
   | { type: 'bossPhase'; boss: string; phase: number }
   | { type: 'bossDefeated'; boss: string };
 

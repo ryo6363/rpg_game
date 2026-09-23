@@ -4,22 +4,24 @@ import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { HudState } from '../core/HudState';
 import { SaveManager } from '../core/SaveManager';
-import type { AreaDef, DialogLine, ExitDef, ItemInstance, StoryEventDef, StoryTrigger } from '../core/types';
+import type { AreaDef, AreaObjectDef, DialogLine, ExitDef, ItemInstance, StoryEventDef, StoryTrigger } from '../core/types';
 import { viewport } from '../core/Viewport';
 import { AREAS } from '../data/areas';
 import type { Enemy } from '../entities/Enemy';
 import { FloatingTextPool } from '../entities/FloatingTextPool';
 import { Player } from '../entities/Player';
 import { AoeManager } from '../entities/AoeManager';
+import { HazardManager } from '../entities/HazardManager';
 import { ProjectileManager } from '../entities/ProjectileManager';
 import { InputState } from '../input/InputState';
 import { rollDamage } from '../systems/Combat';
-import type { AoeSpec, CombatWorld, ProjectileSpec } from '../systems/CombatWorld';
+import type { AoeSpec, CombatWorld, HazardSpec, ProjectileSpec } from '../systems/CombatWorld';
 import { addToInventory } from '../systems/Equipment';
 import { createItem } from '../systems/Items';
 import { buildAreaMap, type BuiltMap } from '../systems/MapBuilder';
-import { completeEvent, currentLoop, enemyLevel, findEvent, linesForLoop } from '../systems/Story';
+import { completeEvent, currentLoop, enemyLevel, findEvent, hasFlag, linesForLoop } from '../systems/Story';
 import { OVERLAY_OPEN_KEY, openOverlay, WORLD_SCENE_KEY } from '../ui/overlay';
+import { Sfx } from '../ui/sfx';
 
 export interface WorldData {
   areaId: string;
@@ -40,6 +42,7 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   protected sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
   protected projectiles!: ProjectileManager;
   protected aoes!: AoeManager;
+  protected hazards!: HazardManager;
   private arrive = '@';
   private leaving = false;
 
@@ -56,6 +59,10 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   /** 各シーンの create の最初に呼ぶ */
   protected createWorld() {
     InputState.reset();
+    if (this.area.chapter > gameState.story.chapter) {
+      gameState.story.chapter = this.area.chapter;
+      SaveManager.save();
+    }
     this.map = buildAreaMap(this, this.area);
     const pos = this.map.markers.get(this.arrive)?.[0] ?? this.map.markers.get('@')?.[0] ?? this.map.walkable[0];
     this.startPos = { ...pos };
@@ -74,6 +81,7 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.sparks.setDepth(99998);
     this.projectiles = new ProjectileManager(this, this);
     this.aoes = new AoeManager(this, this);
+    this.hazards = new HazardManager(this, this);
 
     const cam = this.cameras.main;
     cam.setZoom(viewport.zoom).setRoundPixels(true).setBackgroundColor('#1a1c2c');
@@ -113,6 +121,7 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     else this.scene.launch('UI');
     this.scene.bringToTop('UI');
     this.createObjects();
+    this.refreshObjectFrames();
 
     // UIScene の create が終わってから初期値を通知し、エリアに入ったときのイベントを起こす
     this.time.delayedCall(0, () => {
@@ -128,18 +137,35 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   // ------------------------------------------------------------ ストーリー
 
   /** 調べられる物（近づくと自動でイベント） */
-  private objects: { id: string; img: Phaser.GameObjects.Image; touched: boolean }[] = [];
+  private objects: { def: AreaObjectDef; img: Phaser.GameObjects.Image; touched: boolean }[] = [];
 
   private createObjects() {
     this.objects = [];
     const loop = currentLoop();
     for (const def of this.area.objects ?? []) {
       if ((def.minLoop ?? 1) > loop || loop > (def.maxLoop ?? Infinity)) continue;
-      const pos = this.map.markers.get(def.marker)?.[0];
-      if (!pos) continue;
-      const img = this.add.image(pos.x, pos.y, def.sprite, 0).setDepth(pos.y);
-      this.add.image(pos.x, pos.y + 6, 'shadow_wide', 0).setAlpha(0.3).setDepth(pos.y - 1);
-      this.objects.push({ id: def.id, img, touched: false });
+      // 同じ文字を複数置けば、すべての位置に置く
+      for (const pos of this.map.markers.get(def.marker) ?? []) {
+        const img = def.solid
+          ? this.physics.add.staticImage(pos.x, pos.y, def.sprite, 0)
+          : this.add.image(pos.x, pos.y, def.sprite, 0);
+        img.setDepth(pos.y + img.height * 0.3);
+        if (def.solid) this.physics.add.collider(this.player, img as Phaser.Physics.Arcade.Image);
+        const shadow = img.width > 16 ? 1.6 : 1;
+        this.add
+          .image(pos.x, pos.y + img.height * 0.4, 'shadow_wide', 0)
+          .setScale(shadow)
+          .setAlpha(0.3)
+          .setDepth(pos.y - 1);
+        this.objects.push({ def, img, touched: false });
+      }
+    }
+  }
+
+  private refreshObjectFrames() {
+    for (const o of this.objects) {
+      const fw = o.def.frameWhen;
+      if (fw) o.img.setFrame(hasFlag(fw.flag) ? fw.frame : 0);
     }
   }
 
@@ -147,8 +173,9 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     for (const o of this.objects) {
       if (o.touched) continue;
       if (Math.hypot(o.img.x - this.player.x, o.img.y - this.player.y) < 20) {
-        o.touched = true;
-        this.playStory({ type: 'touch', object: o.id });
+        // 同じ物が複数あっても、どれか1つに触れたら全部「触れた」扱い
+        for (const other of this.objects) if (other.def.id === o.def.id) other.touched = true;
+        this.playStory({ type: 'touch', object: o.def.id });
       }
     }
   }
@@ -165,6 +192,8 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     played.add(ev.id);
     this.playLines(ev.lines, () => {
       completeEvent(ev);
+      // フラグで見た目が変わる物（大時計など）を、次の会話より前に描き替える
+      this.refreshObjectFrames();
       this.runThen(ev, () => {
         if (!this.playStory(trigger, onDone, played)) onDone?.(ev);
       });
@@ -211,11 +240,22 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.player.updatePlayer(dt, this);
     this.projectiles.update(dt);
     this.aoes.update(dt);
+    this.hazards.update(dt);
     if (!this.leaving && !this.player.dead) this.updateObjects();
     if (!this.leaving && !this.player.dead) {
       const exit = this.map.exitAt(this.player.x, this.player.y);
-      if (exit && this.canLeave()) this.goTo(exit);
+      if (exit && exit.requires && !hasFlag(exit.requires)) this.warnLocked(exit.lockedText ?? 'この先へはまだ進めない');
+      else if (exit && this.canLeave()) this.goTo(exit);
     }
+  }
+
+  private lockedWarnAt = 0;
+
+  /** 通れない出入口のメッセージ（連続して出さない） */
+  protected warnLocked(text: string) {
+    if (this.time.now < this.lockedWarnAt) return;
+    this.lockedWarnAt = this.time.now + 2500;
+    EventBus.emit(GameEvents.Toast, text, '#94b0c2');
   }
 
   /** 出入口から出られるか（ボス戦中は出られない） */
@@ -264,13 +304,13 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     return hits;
   }
 
-  damagePlayer(rawAtk: number, fromX: number, fromY: number) {
+  damagePlayer(rawAtk: number, fromX: number, fromY: number, dot = false) {
     const p = this.player;
-    if (p.isInvulnerable) return;
+    if (dot ? p.dead : p.isInvulnerable) return;
     const res = rollDamage({ atk: rawAtk, critRate: 0, critDamage: 0 }, 1, p.stats.def);
-    const died = p.applyDamage(res.amount);
-    this.floatText.show(p.x, p.y - 8, `${res.amount}`, '#b13e53');
-    EventBus.emit(GameEvents.PlayerDamaged, res.amount, fromX, fromY);
+    const died = p.applyDamage(res.amount, dot);
+    this.floatText.show(p.x, p.y - 8, `${res.amount}`, dot ? '#ef7d57' : '#b13e53');
+    if (!dot) EventBus.emit(GameEvents.PlayerDamaged, res.amount, fromX, fromY);
     this.emitHp();
     if (died) this.onPlayerDied();
   }
@@ -283,12 +323,26 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.projectiles.spawn(spec);
   }
 
+  spawnHazard(spec: HazardSpec) {
+    this.hazards.spawn(spec);
+  }
+
   showAoeEffect(spec: AoeSpec) {
+    if (spec.effect === 'meteor') return this.showMeteor(spec);
+    if (spec.effect === 'finale') return this.showFinale(spec);
     if (spec.effect !== 'flame') return;
     // 範囲の広さに合わせた数の炎を、範囲内のランダムな位置に立ち上らせる
     const s = spec.shape;
     const area =
-      s.type === 'circle' ? Math.PI * s.radius ** 2 : s.type === 'line' ? s.length * s.width : (Math.PI * s.radius ** 2 * s.angle) / 360;
+      s.type === 'circle'
+        ? Math.PI * s.radius ** 2
+        : s.type === 'line'
+          ? s.length * s.width
+          : s.type === 'cone'
+            ? (Math.PI * s.radius ** 2 * s.angle) / 360
+            : s.type === 'ring'
+              ? Math.PI * (s.outer ** 2 - s.inner ** 2)
+              : s.length * s.width * 4;
     const count = Phaser.Math.Clamp(Math.round(area / 70), 6, 28);
     for (let i = 0; i < count; i++) {
       const p = AoeManager.randomPoint(spec);
@@ -312,6 +366,115 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
         onComplete: () => flame.destroy(),
       });
     }
+  }
+
+  /** 上空から光の柱が落ちてきて爆発 */
+  private showMeteor(spec: AoeSpec) {
+    const r = spec.shape.type === 'circle' ? spec.shape.radius : 16;
+    const streak = this.add
+      .image(spec.x, spec.y - 70, 'fx_pixel', 0)
+      .setOrigin(0.5, 1)
+      .setScale(3, 26)
+      .setTint(0xffd23f)
+      .setDepth(spec.y + 40);
+    this.tweens.add({
+      targets: streak,
+      y: spec.y,
+      duration: 90,
+      onComplete: () => {
+        streak.destroy();
+        this.showBlast(spec.x, spec.y, r, 0xffd23f);
+        this.sparks.explode(4, spec.x, spec.y);
+      },
+    });
+  }
+
+  /** 必殺技の大爆発：強い光・画面揺れ・効果音・何重もの爆発 */
+  private showFinale(spec: AoeSpec) {
+    const cam = this.cameras.main;
+    cam.flash(500, 255, 255, 255);
+    cam.shake(600, 0.012);
+    Sfx.boom(1);
+    const R = spec.shape.type === 'circle' ? spec.shape.radius : 120;
+    for (let i = 0; i < 4; i++) {
+      this.time.delayedCall(i * 90, () => this.showBlast(spec.x, spec.y, (R * (i + 1)) / 4, i % 2 ? 0xffd23f : 0xef7d57));
+    }
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      const d = R * (0.3 + Math.random() * 0.6);
+      this.time.delayedCall(80 + Math.random() * 250, () =>
+        this.showBlast(spec.x + Math.cos(a) * d, spec.y + Math.sin(a) * d, 14, 0xef7d57),
+      );
+    }
+  }
+
+  /** 時間停止：画面をモノクロ＋暗くし、狙った場所に時計盤を出す */
+  timeStopEffect(duration: number, x: number, y: number) {
+    const cam = this.cameras.main;
+    Sfx.chime();
+    // モノクロ（WebGL のときだけ）
+    const fx = this.game.renderer.type === Phaser.WEBGL ? cam.postFX.addColorMatrix() : null;
+    fx?.grayscale(1);
+    // 暗い幕（画面に固定）
+    const veil = this.add
+      .rectangle(0, 0, cam.width / cam.zoom, cam.height / cam.zoom, 0x1a1c2c, 0)
+      .setOrigin(0)
+      .setScrollFactor(0)
+      .setDepth(90000);
+    this.tweens.add({ targets: veil, fillAlpha: 0.35, duration: 150, yoyo: true, hold: Math.max(0, duration * 1000 - 300) });
+    // 時計盤：目盛りと、ぐるりと回る針
+    const clock = this.add.graphics().setDepth(90001);
+    const R = 30;
+    const t = { a: 0 };
+    this.tweens.add({
+      targets: t,
+      a: 1,
+      duration: duration * 1000,
+      onUpdate: () => {
+        clock.clear();
+        clock.lineStyle(1, 0xf4f4f4, 0.8).strokeCircle(x, y, R + 4);
+        for (let i = 0; i < 12; i++) {
+          const ang = (i / 12) * Math.PI * 2;
+          const inner = i % 3 === 0 ? R - 2 : R + 1;
+          clock.lineBetween(
+            x + Math.cos(ang) * inner,
+            y + Math.sin(ang) * inner,
+            x + Math.cos(ang) * (R + 4),
+            y + Math.sin(ang) * (R + 4),
+          );
+        }
+        const hand = -Math.PI / 2 + t.a * Math.PI * 2;
+        clock.lineStyle(2, 0xffd23f, 1).lineBetween(x, y, x + Math.cos(hand) * (R - 4), y + Math.sin(hand) * (R - 4));
+        const hour = -Math.PI / 2 + t.a * Math.PI * 0.5;
+        clock.lineStyle(1, 0xf4f4f4, 1).lineBetween(x, y, x + Math.cos(hour) * (R - 12), y + Math.sin(hour) * (R - 12));
+      },
+      onComplete: () => {
+        clock.destroy();
+        veil.destroy();
+        if (fx) cam.postFX.remove(fx as unknown as Phaser.FX.Controller);
+      },
+    });
+  }
+
+  /** 剣を地面に突き立てる：光る剣と、小さな揺れ */
+  swordPlantEffect(x: number, y: number, duration: number) {
+    const sword = this.add
+      .image(x, y - 30, 'fx_pixel', 0)
+      .setOrigin(0.5, 1)
+      .setScale(3, 26)
+      .setTint(0xf4f4f4)
+      .setDepth(y + 20);
+    this.tweens.add({ targets: sword, y: y + 6, duration: 120, ease: 'Quad.easeIn' });
+    this.tweens.add({ targets: sword, alpha: 0.4, duration: 200, yoyo: true, repeat: -1, delay: 150 });
+    this.time.delayedCall(120, () => {
+      this.cameras.main.shake(180, 0.006);
+      this.showBlast(x, y, 16, 0xffd23f);
+      Sfx.boom(0.3);
+    });
+    this.time.delayedCall(duration * 1000, () => {
+      this.tweens.killTweensOf(sword);
+      sword.destroy();
+    });
   }
 
   showBlast(x: number, y: number, radius: number, color: number) {

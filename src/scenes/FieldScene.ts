@@ -99,6 +99,11 @@ export class FieldScene extends WorldScene {
     const { died, phaseUp } = enemy.applyDamage(res.amount, fromX, fromY);
     this.floatText.show(enemy.x, enemy.y - 6, `${res.amount}`, res.crit ? '#ffcd75' : '#f4f4f4', res.crit);
     this.sparks.explode(res.crit ? 8 : 4, enemy.x, enemy.y);
+    // ボスに最初の一撃を当てたとき・フェーズが変わったときの台詞
+    if (enemy.isBoss && !enemy.hitOnce && !died) {
+      enemy.hitOnce = true;
+      this.playStory({ type: 'bossHit', boss: enemy.def.id });
+    }
     if (phaseUp) this.playStory({ type: 'bossPhase', boss: enemy.def.id, phase: enemy.phase });
     if (died) {
       this.sparks.explode(12, enemy.x, enemy.y);

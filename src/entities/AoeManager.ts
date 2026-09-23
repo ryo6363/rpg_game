@@ -15,6 +15,7 @@ interface Aoe {
 /**
  * 敵の攻撃の予兆範囲（FF14 の AoE 表示）。
  * 範囲を地面に表示し、内側が塗りつぶされきった瞬間に範囲内のプレイヤーへダメージ。
+ * spec.safe の範囲は「安全地帯」の目印として水色で表示するだけ（ダメージなし）。
  */
 export class AoeManager {
   private list: Aoe[] = [];
@@ -25,8 +26,8 @@ export class AoeManager {
   ) {}
 
   spawn(spec: AoeSpec) {
-    // 地面の上・キャラより下に描く
-    const g = this.scene.add.graphics().setDepth(-5000);
+    // 地面の上・キャラより下に描く（安全地帯の目印は予兆より上）
+    const g = this.scene.add.graphics().setDepth(spec.safe ? -4990 : -5000);
     this.list.push({ spec, g, elapsed: -(spec.delay ?? 0), flash: 0, done: false });
   }
 
@@ -50,11 +51,11 @@ export class AoeManager {
       this.draw(a, p, 0);
       if (p >= 1) {
         a.done = true;
-        a.flash = TELEGRAPH.flashTime;
+        a.flash = a.spec.safe ? 0 : TELEGRAPH.flashTime;
+        if (a.spec.safe) continue;
         if (a.spec.effect) this.world.showAoeEffect(a.spec);
-        if (this.contains(a.spec, this.world.player.x, this.world.player.y, this.world.player.radius)) {
-          this.world.damagePlayer(a.spec.power, a.spec.x, a.spec.y);
-        }
+        const pl = this.world.player;
+        if (this.contains(a.spec, pl.x, pl.y, pl.radius)) this.world.damagePlayer(a.spec.power, a.spec.x, a.spec.y);
       }
     }
     // 光り終わったものを片付ける
@@ -67,8 +68,11 @@ export class AoeManager {
     }
   }
 
-  /** 点（半径 r の円）が範囲に入っているか */
+  /** 点（半径 r の円）が範囲に入っているか。安全地帯（holes）の中なら false */
   contains(spec: AoeSpec, px: number, py: number, r: number): boolean {
+    for (const h of spec.holes ?? []) {
+      if (Math.hypot(px - h.x, py - h.y) <= h.r) return false;
+    }
     const s = spec.shape;
     const dx = px - spec.x;
     const dy = py - spec.y;
@@ -92,6 +96,16 @@ export class AoeManager {
       }
       case 'line':
         return along >= -r && along <= s.length + r && Math.abs(side) <= s.width / 2 + r;
+      case 'ring': {
+        // 内側の安全地帯は、体が半分以上入っていれば安全
+        const dist = Math.hypot(dx, dy);
+        return dist <= s.outer + r && dist >= s.inner - r * 0.5;
+      }
+      case 'cross': {
+        const hw = s.width / 2 + r;
+        const len = s.length + r;
+        return (Math.abs(along) <= len && Math.abs(side) <= hw) || (Math.abs(side) <= len && Math.abs(along) <= hw);
+      }
     }
   }
 
@@ -121,6 +135,20 @@ export class AoeManager {
         along = Math.random() * s.length;
         side = (Math.random() - 0.5) * s.width;
         break;
+      case 'ring': {
+        const r = s.inner + Math.random() * (s.outer - s.inner);
+        const a = Math.random() * Math.PI * 2;
+        along = Math.cos(a) * r;
+        side = Math.sin(a) * r;
+        break;
+      }
+      case 'cross': {
+        const t = (Math.random() * 2 - 1) * s.length;
+        const w = (Math.random() - 0.5) * s.width;
+        if (Math.random() < 0.5) [along, side] = [t, w];
+        else [along, side] = [w, t];
+        break;
+      }
     }
     return { x: spec.x + along * cos - side * sin, y: spec.y + along * sin + side * cos };
   }
@@ -131,13 +159,26 @@ export class AoeManager {
     g.clear();
     if (a.done && flash <= 0) return;
     const T = TELEGRAPH;
-    this.fillShape(g, spec, spec.shape, 1, T.fillColor, T.baseAlpha + flash * T.flashAlpha);
-    if (!a.done) this.fillShape(g, spec, spec.shape, progress, T.fillColor, T.progressAlpha);
+    if (spec.safe) {
+      // 安全地帯の目印（水色）。周りの予兆が重なっても見えるよう、濃いめ・太めに描く
+      const pulse = 0.75 + Math.sin(a.elapsed * 10) * 0.25;
+      this.fillShape(g, spec, spec.shape, 1, 0x1a1c2c, 0.55);
+      this.fillShape(g, spec, spec.shape, 1, 0x73eff7, 0.5 * pulse);
+      g.lineStyle(2, 0x73eff7, 1);
+      this.strokeShape(g, spec, spec.shape, 1);
+      g.lineStyle(1, 0xffffff, pulse);
+      this.strokeShape(g, spec, spec.shape, 0.7);
+      return;
+    }
+    // grow: 範囲そのものが外へ広がっていく（必殺技）
+    const outline = spec.grow ? Math.min(1, 0.15 + progress * 0.85) : 1;
+    this.fillShape(g, spec, spec.shape, outline, T.fillColor, T.baseAlpha + flash * T.flashAlpha);
+    if (!a.done) this.fillShape(g, spec, spec.shape, progress * outline, T.fillColor, T.progressAlpha);
     g.lineStyle(1, T.edgeColor, T.edgeAlpha * (a.done ? flash : 1));
-    this.strokeShape(g, spec, spec.shape);
+    this.strokeShape(g, spec, spec.shape, outline);
   }
 
-  /** scale: 塗る割合（円・扇は半径、帯は長さ） */
+  /** scale: 塗る割合（円・扇は半径、帯は長さ、ドーナツは内から外へ、十字は中心から外へ） */
   private fillShape(g: Phaser.GameObjects.Graphics, spec: AoeSpec, s: AoeShape, scale: number, color: number, alpha: number) {
     if (scale <= 0) return;
     g.fillStyle(color, alpha);
@@ -153,28 +194,58 @@ export class AoeManager {
         break;
       }
       case 'line':
-        g.fillPoints(this.lineCorners(spec, s.length * scale, s.width), true);
+        g.fillPoints(this.lineCorners(spec.x, spec.y, spec.angle, 0, s.length * scale, s.width), true);
         break;
+      case 'ring': {
+        // 外周を一周してから内周を逆回りにたどる1つの多角形で、穴のあいた円を塗る（内側から外へ伸びる）
+        const outer = s.inner + (s.outer - s.inner) * scale;
+        const n = 48;
+        const pts: { x: number; y: number }[] = [];
+        for (let i = 0; i <= n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          pts.push({ x: spec.x + Math.cos(a) * outer, y: spec.y + Math.sin(a) * outer });
+        }
+        for (let i = n; i >= 0; i--) {
+          const a = (i / n) * Math.PI * 2;
+          pts.push({ x: spec.x + Math.cos(a) * s.inner, y: spec.y + Math.sin(a) * s.inner });
+        }
+        g.fillPoints(pts, true);
+        break;
+      }
+      case 'cross': {
+        const L = s.length * scale;
+        g.fillPoints(this.lineCorners(spec.x, spec.y, spec.angle, -L, L, s.width), true);
+        g.fillPoints(this.lineCorners(spec.x, spec.y, spec.angle + Math.PI / 2, -L, L, s.width), true);
+        break;
+      }
     }
   }
 
-  private strokeShape(g: Phaser.GameObjects.Graphics, spec: AoeSpec, s: AoeShape) {
+  private strokeShape(g: Phaser.GameObjects.Graphics, spec: AoeSpec, s: AoeShape, scale: number) {
     switch (s.type) {
       case 'circle': {
         const c = this.circleCenter(spec, s.offset ?? 0);
-        g.strokeCircle(c.x, c.y, s.radius);
+        g.strokeCircle(c.x, c.y, s.radius * scale);
         break;
       }
       case 'cone': {
         const h = Phaser.Math.DegToRad(s.angle / 2);
         g.beginPath();
-        g.slice(spec.x, spec.y, s.radius, spec.angle - h, spec.angle + h, false);
+        g.slice(spec.x, spec.y, s.radius * scale, spec.angle - h, spec.angle + h, false);
         g.closePath();
         g.strokePath();
         break;
       }
       case 'line':
-        g.strokePoints(this.lineCorners(spec, s.length, s.width), true, true);
+        g.strokePoints(this.lineCorners(spec.x, spec.y, spec.angle, 0, s.length * scale, s.width), true, true);
+        break;
+      case 'ring':
+        g.strokeCircle(spec.x, spec.y, s.inner);
+        g.strokeCircle(spec.x, spec.y, s.outer * scale);
+        break;
+      case 'cross':
+        g.strokePoints(this.lineCorners(spec.x, spec.y, spec.angle, -s.length, s.length, s.width), true, true);
+        g.strokePoints(this.lineCorners(spec.x, spec.y, spec.angle + Math.PI / 2, -s.length, s.length, s.width), true, true);
         break;
     }
   }
@@ -183,19 +254,22 @@ export class AoeManager {
     return { x: spec.x + Math.cos(spec.angle) * offset, y: spec.y + Math.sin(spec.angle) * offset };
   }
 
-  private lineCorners(spec: AoeSpec, length: number, width: number): Phaser.Types.Math.Vector2Like[] {
-    const cos = Math.cos(spec.angle);
-    const sin = Math.sin(spec.angle);
+  /** 向き angle の帯（from〜to の長さ、幅 width）の四隅 */
+  private lineCorners(x: number, y: number, angle: number, from: number, to: number, width: number) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
     const hw = width / 2;
     const px = -sin * hw;
     const py = cos * hw;
-    const ex = spec.x + cos * length;
-    const ey = spec.y + sin * length;
+    const sx = x + cos * from;
+    const sy = y + sin * from;
+    const ex = x + cos * to;
+    const ey = y + sin * to;
     return [
-      { x: spec.x + px, y: spec.y + py },
+      { x: sx + px, y: sy + py },
       { x: ex + px, y: ey + py },
       { x: ex - px, y: ey - py },
-      { x: spec.x - px, y: spec.y - py },
+      { x: sx - px, y: sy - py },
     ];
   }
 

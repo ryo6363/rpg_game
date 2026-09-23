@@ -33,6 +33,8 @@ function sameTrigger(a: StoryTrigger, b: StoryTrigger): boolean {
       return a.npc === (b as typeof a).npc;
     case 'touch':
       return a.object === (b as typeof a).object;
+    case 'bossHit':
+      return a.boss === (b as typeof a).boss;
     case 'bossPhase':
       return a.boss === (b as typeof a).boss && a.phase === (b as typeof a).phase;
     case 'bossDefeated':

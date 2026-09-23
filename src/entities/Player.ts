@@ -94,12 +94,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return this.invulnerable > 0 || this.dead || this.dash !== null;
   }
 
-  /** ダメージを受ける。死亡したら true */
-  applyDamage(amount: number): boolean {
-    if (this.isInvulnerable) return false;
+  /**
+   * ダメージを受ける。死亡したら true。
+   * dot（継続ダメージ）は無敵時間を無視し、無敵時間も発生させない
+   */
+  applyDamage(amount: number, dot = false): boolean {
+    if (dot ? this.dead || this.dash !== null : this.isInvulnerable) return false;
     this.hp = Math.max(0, this.hp - amount);
-    this.invulnerable = PLAYER.invulnerableTime;
-    this.hitFlash = 0.1;
+    if (!dot) this.invulnerable = PLAYER.invulnerableTime;
+    this.hitFlash = dot ? 0.05 : 0.1;
     if (this.hp <= 0) {
       this.dead = true;
       this.dash = null;

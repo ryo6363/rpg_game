@@ -9,12 +9,15 @@ import { RARITY_META, SLOT_META, SLOT_ORDER, STAT_META, STAT_ORDER } from '../da
 import { JOBS } from '../data/jobs';
 import {
   autoEquipBest,
+  bulkSellPreview,
   canEquip,
   currentStats,
   equipFromInventory,
   getEquipped,
   isInventoryFull,
+  sellAllInventory,
   sellItem,
+  sortInventory,
   statsIfEquipped,
   statsIfUnequipped,
   unequip,
@@ -23,7 +26,7 @@ import {
 import { formatStat, itemDisplayName, itemLines, itemSlot, sellPrice, upgradeCost } from '../systems/Items';
 import { closeOverlay } from '../ui/overlay';
 import { applyColor, rainbowNow, rarityTextColor } from '../ui/rarityStyle';
-import { createText } from '../ui/text';
+import { createText, wrapJa } from '../ui/text';
 
 type Selection = { kind: 'bag'; item: ItemInstance } | { kind: 'equip'; slot: Slot } | null;
 
@@ -43,6 +46,10 @@ export class InventoryScene extends Phaser.Scene {
   private rainbowCells: { g: Phaser.GameObjects.Graphics; x: number; y: number }[] = [];
   /** upgrade: 整備士から開いたとき（強化ボタンを出す） */
   private mode: 'normal' | 'upgrade' = 'normal';
+  /** 一括売却の確認中 */
+  private bulkSellArmed = false;
+  /** 開いた直後のタップ（持ち物ボタンを押した指）を無視する */
+  private readyAt = 0;
 
   constructor() {
     super('Inventory');
@@ -56,6 +63,8 @@ export class InventoryScene extends Phaser.Scene {
     this.notice = null;
     this.selection = null;
     this.sellArmed = null;
+    this.bulkSellArmed = false;
+    this.readyAt = this.time.now + 250;
     this.cameras.main.setZoom(viewport.zoom).setOrigin(0, 0);
     this.add.rectangle(0, 0, viewport.width, viewport.height, 0x1a1c2c, 0.94).setOrigin(0);
     this.root = this.add.container(0, 0);
@@ -91,14 +100,7 @@ export class InventoryScene extends Phaser.Scene {
 
     // ---- 装備中
     this.text(left, y + 2, `装備中（${job.name}）`, 6, '#94b0c2');
-    this.button(right - 44, y, 44, 11, '最強装備', 0xb8860b, true, () => {
-      const n = autoEquipBest();
-      this.selection = null;
-      this.sellArmed = null;
-      this.notice = n > 0 ? `${n}か所を最強の装備に付け替えた` : 'すでに最強の装備です';
-      this.refresh();
-    });
-    y += 13;
+    y += 11;
     const eqW = SLOT_ORDER.length * CELL + (SLOT_ORDER.length - 1) * GAP;
     let x = Math.round((W - eqW) / 2);
     for (const slot of SLOT_ORDER) {
@@ -114,11 +116,15 @@ export class InventoryScene extends Phaser.Scene {
     const statLine = (keys: StatKey[]) => keys.map((k) => `${STAT_META[k].short}${formatStat(k, s[k])}`).join('  ');
     this.text(left, y, statLine(['maxHp', 'atk', 'def', 'moveSpeed']), 6);
     this.text(left, y + 8, statLine(['critRate', 'critDamage', 'attackSpeed']), 6);
-    y += 19;
+    y += 18;
 
-    // ---- 持ち物
+    // ---- 操作ボタン（持ち物の上に1列）
     const bagW = BAG_COLS * CELL + (BAG_COLS - 1) * GAP;
     const bagX = Math.round((W - bagW) / 2);
+    this.drawToolbar(bagX, y, bagW);
+    y += 15;
+
+    // ---- 持ち物
     for (let i = 0; i < LOOT.inventorySize; i++) {
       const cx = bagX + (i % BAG_COLS) * (CELL + GAP);
       const cy = y + Math.floor(i / BAG_COLS) * (CELL + GAP);
@@ -132,6 +138,49 @@ export class InventoryScene extends Phaser.Scene {
     this.drawDetail(left, y, right - left, H - safe.bottom - 4 - y);
   }
 
+  /** 種類順・強い順・最強装備・一括売却 */
+  private drawToolbar(x: number, y: number, w: number) {
+    const gap = 3;
+    const bw = (w - gap * 3) / 4;
+    const h = 12;
+    const bx = (i: number) => x + i * (bw + gap);
+    const after = (notice: string) => {
+      this.selection = null;
+      this.sellArmed = null;
+      this.bulkSellArmed = false;
+      this.notice = notice;
+      this.refresh();
+    };
+    const hasItems = gameState.inventory.length > 0;
+
+    this.button(bx(0), y, bw, h, '種類順', 0x333c57, hasItems, () => {
+      sortInventory('type');
+      after('部位ごとに並べ替えた');
+    });
+    this.button(bx(1), y, bw, h, '強い順', 0x333c57, hasItems, () => {
+      sortInventory('power');
+      after(`${JOBS[gameState.currentJob].name}で装備して強い順に並べ替えた`);
+    });
+    this.button(bx(2), y, bw, h, '最強装備', 0xb8860b, true, () => {
+      const n = autoEquipBest();
+      after(n > 0 ? `${n}か所を最強の装備に付け替えた` : 'すでに最強の装備です');
+    });
+    // 一括売却は2回押しで確定（1回目で個数と金額を表示）
+    const preview = bulkSellPreview();
+    const armed = this.bulkSellArmed && hasItems;
+    this.button(bx(3), y, bw, h, armed ? '本当に売る' : '一括売却', armed ? 0xb13e53 : 0x5d275d, hasItems, () => {
+      if (!this.bulkSellArmed) {
+        this.selection = null;
+        this.bulkSellArmed = true;
+        this.notice = `装備していない ${preview.count}個 を ${preview.gold}G で売ります。もう一度押すと確定`;
+        this.refresh();
+        return;
+      }
+      const gold = sellAllInventory();
+      after(`${preview.count}個 を売って ${gold}G 手に入れた`);
+    });
+  }
+
   private drawDetail(x: number, y: number, w: number, h: number) {
     const g = this.add.graphics();
     g.fillStyle(0x333c57, 0.6).fillRect(x, y, w, h);
@@ -143,7 +192,7 @@ export class InventoryScene extends Phaser.Scene {
     if (!sel || !item) {
       const msg = sel?.kind === 'equip' ? `${SLOT_META[sel.slot].label}：なし` : 'アイテムをタップしてください';
       this.text(x + 4, y + 4, msg, 6, '#94b0c2');
-      if (this.notice) this.text(x + 4, y + 14, this.notice, 6, '#ffd23f');
+      if (this.notice) this.text(x + 4, y + 14, wrapJa(this.notice, w - 8, 6), 6, '#ffd23f');
       return;
     }
 
@@ -248,6 +297,7 @@ export class InventoryScene extends Phaser.Scene {
 
   private select(sel: Selection) {
     this.selection = sel;
+    this.bulkSellArmed = false;
     this.notice = null;
     this.sellArmed = null;
     this.refresh();
@@ -302,7 +352,10 @@ export class InventoryScene extends Phaser.Scene {
     }
     if (onTap) {
       const z = this.add.zone(x, y, CELL, CELL).setOrigin(0).setInteractive();
-      z.on('pointerup', () => this.time.delayedCall(0, onTap));
+      z.on('pointerup', () => {
+        if (this.time.now < this.readyAt) return;
+        this.time.delayedCall(0, onTap);
+      });
       this.root.add(z);
     }
   }
@@ -324,7 +377,10 @@ export class InventoryScene extends Phaser.Scene {
     this.text(x + w / 2, y + h / 2, label, 6, enabled ? '#f4f4f4' : '#566c86').setOrigin(0.5);
     if (enabled) {
       const z = this.add.zone(x, y, w, h).setOrigin(0).setInteractive();
-      z.on('pointerup', () => this.time.delayedCall(0, onTap));
+      z.on('pointerup', () => {
+        if (this.time.now < this.readyAt) return;
+        this.time.delayedCall(0, onTap);
+      });
       this.root.add(z);
     }
   }

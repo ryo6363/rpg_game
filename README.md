@@ -76,7 +76,7 @@ src/
 ### 拡張のしかた
 
 - **敵を増やす**: `data/sprites.ts` に見た目、`data/enemies.ts` に定義を追加し、`data/areas.ts` の `enemies` に登録
-- **敵の攻撃範囲（予兆）**: `data/enemies.ts` の `attack` に形（円 circle／扇 cone／直線 line）と溜め時間を書く。見た目の色は `config/balance.ts` の TELEGRAPH
+- **敵の攻撃範囲（予兆）**: `data/enemies.ts` の `attack` に形（円 circle／扇 cone／直線 line／ドーナツ ring／十字 cross）と溜め時間を書く。連続攻撃（repeat）・ばらまき（scatter）・突進の接触判定（contact）・炎の床（trail）・特殊技（special：王都崩壊／時葬／輪廻断絶）も指定できる。見た目の色は `config/balance.ts` の TELEGRAPH
 - **新しい敵の動き**: `systems/EnemyAI.ts` に関数を追加して `ENEMY_AI` に登録
 - **装備の種類を増やす**: `data/itemBases.ts` に追加（アイコンは `data/sprites.ts` の ICON_SPRITES）
 - **追加効果を増やす**: `data/affixes.ts` に追加。ドロップ率・レアリティ確率などは `config/balance.ts` の LOOT

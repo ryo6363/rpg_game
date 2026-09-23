@@ -189,3 +189,46 @@ export function upgradeItem(item: ItemInstance): boolean {
   changed();
   return true;
 }
+
+/** 並べ替えの基準 */
+export type SortMode = 'type' | 'power';
+
+const RARITY_RANK: Record<string, number> = { normal: 0, magic: 1, rare: 2, legendary: 3 };
+
+/**
+ * 持ち物を並べ替える。
+ * type: 部位順（武装→ヘルメット→…）、同じ部位ならレアリティ・アイテムレベルの高い順
+ * power: 今のジョブで装備したときに強くなる順（装備できない物は後ろにレアリティ順）
+ */
+export function sortInventory(mode: SortMode, jobId: JobId = gameState.currentJob) {
+  const inv = gameState.inventory;
+  const byRarity = (a: ItemInstance, b: ItemInstance) =>
+    RARITY_RANK[b.rarity] - RARITY_RANK[a.rarity] || b.itemLevel - a.itemLevel || b.upgrade - a.upgrade;
+
+  if (mode === 'type') {
+    const slotIndex = (i: ItemInstance) => SLOT_ORDER.indexOf(itemSlot(i));
+    const weaponType = (i: ItemInstance) => ITEM_BASES[i.baseId].weaponType ?? '';
+    inv.sort((a, b) => slotIndex(a) - slotIndex(b) || weaponType(a).localeCompare(weaponType(b)) || byRarity(a, b));
+  } else {
+    const score = new Map(inv.map((i) => [i, canEquip(i, jobId) ? powerScore(statsIfEquipped(i, jobId)) : -1]));
+    inv.sort((a, b) => score.get(b)! - score.get(a)! || byRarity(a, b));
+  }
+  SaveManager.requestSave();
+}
+
+/** 装備していない持ち物をすべて売ったときの個数と金額 */
+export function bulkSellPreview(): { count: number; gold: number } {
+  return {
+    count: gameState.inventory.length,
+    gold: gameState.inventory.reduce((sum, i) => sum + sellPrice(i), 0),
+  };
+}
+
+/** 装備していない持ち物をすべて売る。得たゴールドを返す */
+export function sellAllInventory(): number {
+  const { gold } = bulkSellPreview();
+  gameState.inventory.length = 0;
+  gameState.gold += gold;
+  changed();
+  return gold;
+}

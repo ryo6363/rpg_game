@@ -14,6 +14,7 @@ import { JobSelectScene } from './scenes/JobSelectScene';
 import { TownScene } from './scenes/TownScene';
 import { TitleScene } from './scenes/TitleScene';
 import { UIScene } from './scenes/UIScene';
+import { Sfx } from './ui/sfx';
 
 // ---- iOS Safari のズーム・スクロール・長押しメニューを抑止
 const prevent = (e: Event) => e.preventDefault();
@@ -34,6 +35,11 @@ document.addEventListener(
   },
   { passive: false },
 );
+
+// ---- 効果音：iOS は最初のタップの中で音声を有効にする必要がある
+const unlockAudio = () => Sfx.unlock();
+document.addEventListener('touchend', unlockAudio, { passive: true });
+document.addEventListener('pointerdown', unlockAudio, { passive: true });
 
 // ---- ゲーム本体
 // キャンバスは実機ピクセル解像度。各シーンのカメラを viewport.zoom 倍（整数）にして描画する

@@ -25,7 +25,7 @@ export function buildAreaMap(scene: Phaser.Scene, area: AreaDef): BuiltMap {
   const padY = DISPLAY.mapPadY;
   const ts = DISPLAY.tileSize;
   const src = MAPS[area.map];
-  const wall = MAP_MARKERS.border;
+  const wall = area.border ?? MAP_MARKERS.border;
   const fullW = src[0].length + padX * 2;
   const rows = [
     ...Array.from({ length: padY }, () => wall.repeat(fullW)),

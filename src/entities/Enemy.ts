@@ -30,8 +30,22 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   /** ボス：次の攻撃までの時間と、今のフェーズ（1 始まり） */
   attackCooldown = 0;
   phase = 1;
-  /** 連続攻撃の残り回数 */
+  /** 連続攻撃の残り回数と、今が何回目か（0 始まり） */
   repeatLeft = 0;
+  repeatIndex = 0;
+  /** ボス：出現位置（エリアの中心として使う） */
+  homeX = 0;
+  homeY = 0;
+  /** ボス：フェーズが変わって必ず次に使う技 */
+  forcedPattern: string | null = null;
+  /** ボス：最初に攻撃を受けたか */
+  hitOnce = false;
+  /** 飛び出し中にプレイヤーに当たったか（1回の突進で1回だけ） */
+  lungeHit = false;
+  /** 飛び出し中に炎の床を置く間隔 */
+  trailTimer = 0;
+  /** 飛び出しが終わったときに続けて行う処理（王都崩壊の移動など） */
+  afterLunge: (() => void) | null = null;
   private flameTimer = 0;
 
   private hitFlash = 0;
@@ -66,6 +80,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.attackCooldown = 1;
     this.currentAttack = undefined;
     this.repeatLeft = 0;
+    this.repeatIndex = 0;
+    this.homeX = x;
+    this.homeY = y;
+    this.forcedPattern = null;
+    this.hitOnce = false;
+    this.afterLunge = null;
 
     this.setTexture(def.sprite, 0);
     this.setPosition(x, y).setActive(true).setVisible(true).setAlpha(1).setScale(1).setAngle(0);
@@ -109,6 +129,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     while (this.phase - 1 < phases.length && this.hp / this.maxHp <= phases[this.phase - 1]) {
       this.phase++;
       phaseUp = true;
+      const forced = this.def.boss?.forcedOnPhase?.[this.phase];
+      if (forced) this.forcedPattern = forced;
     }
     // 重い敵・攻撃中（溜め・飛び出し）はひるまない
     const busy = this.state === 'windup' || this.state === 'lunge';

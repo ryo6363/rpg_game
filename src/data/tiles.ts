@@ -21,6 +21,14 @@ export const TILE_TYPES: TileType[] = [
   { char: 'H', name: 'wall', collide: true },
   { char: 'D', name: 'door', collide: true },
   { char: 'F', name: 'fence', collide: true },
+  // 灰の都・廃高速道路
+  { char: ';', name: 'ash_stone', collide: false },
+  { char: 'K', name: 'ash_wall', collide: true },
+  { char: 'U', name: 'ash_roof', collide: true },
+  { char: 'A', name: 'asphalt', collide: false },
+  { char: 'L', name: 'lane', collide: false },
+  { char: 'I', name: 'guardrail', collide: true },
+  { char: 'X', name: 'debris', collide: true },
   /** 出入口。エリア定義の exits の文字もこのタイルで描く */
   { char: '#', name: 'gate', collide: false },
 ];

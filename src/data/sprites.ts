@@ -111,6 +111,27 @@ const personSprite = (key: string, hair: string, cloth: string, pants: string): 
   frames: [PERSON.map((r) => r.replace(/H/g, hair).replace(/C/g, cloth).replace(/D/g, pants))],
 });
 
+/** 3コマで揺らめく炎（core = 芯、mid = 中、outer = 外側の色） */
+function flameSprite(key: string, core: string, mid: string, outer: string): PixelSprite {
+  return {
+    key,
+    width: 8,
+    height: 10,
+    anims: [{ name: 'burn', frames: [0, 1, 2], frameRate: 12 }],
+    frames: [0, 1, 2].map((f): PixelGen => (x, y) => {
+      // しずく形：下が丸く、上がとがる。コマごとに先端が左右に揺れる
+      const sway = [0, 1, -1][f];
+      const cx = 3.5 + (sway * (9 - y)) / 9;
+      const halfW = y >= 6 ? 3.2 - (y - 6) * 0.35 : 0.5 + y * 0.45;
+      const d = Math.abs(x - cx);
+      if (d > halfW) return '.';
+      if (d < halfW * 0.35 && y > 3) return core;
+      if (d < halfW * 0.7) return mid;
+      return outer;
+    }),
+  };
+}
+
 /** 行の長さを幅にそろえる（手描きの数え間違い対策） */
 const fit = (rows: string[], w: number) => rows.map((r) => r.padEnd(w, '.').slice(0, w));
 
@@ -193,6 +214,156 @@ const VARG_TOP = [
   '....kddddddddddddddddddk........',
   '....kddnddddddddddnddddk........',
   '....kddkkkddddddddkkdddk........',
+];
+
+// ---- 第2章の敵・物
+const ARMOR_GOBLIN_TOP = [
+  '................',
+  '.....kkkkk......',
+  '....ksswssk.....',
+  '....kssssssk....',
+  '....kdkgkgdk....',
+  '....kgggggk.....',
+  '...kkkssskkk.k..',
+  '..ksssmmmsssksk.',
+  '..ksmsmmmsmskw..',
+  '..kgksmmmskgk...',
+  '...kksssssk.....',
+  '....kmmkmmk.....',
+];
+const GOLEM = [
+  '................',
+  '....kkkkkkk.....',
+  '...kVVVVVVVk....',
+  '..kVVyVVVyVVk...',
+  '..kVVVVVVVVVk...',
+  '.kkYVVkkkVVYkk..',
+  'kVVkYVVVVVYkVVk.',
+  'kVVVkVVVVVkVVVk.',
+  'kYVVkVVaVVkVVYk.',
+  '.kkkkVVVVVkkkk..',
+  '....kVVVVVk.....',
+  '...kVVYkYVVk....',
+  '...kVVk.kVVk....',
+  '..kYVVk.kVVYk...',
+  '..kkkkk.kkkkk...',
+  '................',
+];
+const SHADOW_TOP = [
+  '................',
+  '................',
+  '......kkkk......',
+  '.....kpppnk.....',
+  '....kppppppk....',
+  '....kpwppwpk....',
+  '....kppppppk....',
+  '...kpnppppnpk...',
+  '...kppppppppk...',
+  '..kpnpppppnppk..',
+  '..kpppppppppk...',
+  '..kppppppppppk..',
+];
+const MAGE_SOLDIER = [
+  '................',
+  '......kkk.......',
+  '.....kpppk..k...',
+  '....kppppk.kyk..',
+  '....kpfkfk..k...',
+  '....kpfffk..u...',
+  '...kpppppkk.u...',
+  '..kppvvvppkuu...',
+  '..kpvvvvvppk.u..',
+  '..kppvvvpppk.u..',
+  '..kpppppppk..u..',
+  '...kppppppk..u..',
+  '...kpppppppk.u..',
+  '..kppppppppk....',
+  '..kkkkkkkkkk....',
+  '................',
+];
+// 誰も乗っていない車（車体・影・ライトの色を差し替えて使う）
+const EMPTY_CAR_A = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '.....kdddk.ka...',
+  '..kkkkdddkkka...',
+  '.kXXXXXXXXXXXXk.',
+  'kXXXXXXXXXXXXXLk',
+  'kZXXXXXXXXXXXXXk',
+  'kZZZZZZZZZZZZZZk',
+  '..kmmsk...kmmsk.',
+  '..kmssk...kmssk.',
+  '...kkk.....kkk..',
+  '................',
+];
+const EMPTY_CAR_B = EMPTY_CAR_A.map((r, i) => (i === 12 ? '..ksmmk...ksmmk.' : i === 13 ? '..kmmsk...kmmsk.' : r));
+const recolorCar = (rows: string[], body: string, shade: string, light: string) =>
+  rows.map((r) => r.replace(/X/g, body).replace(/Z/g, shade).replace(/L/g, light));
+
+// 時計の数字（5x7）
+const DIGIT_5 = ['kkkkk', 'k....', 'kkkk.', '....k', '....k', 'k...k', '.kkk.'];
+const DIGIT_4 = ['...k.', '..kk.', '.k.k.', 'k..k.', 'kkkkk', '...k.', '...k.'];
+/** 塔の上の大きな時計。文字盤の中央に数字を描く */
+const clockFrame = (digit: string[]): PixelGen => (x, y) => {
+  const cx = 15.5;
+  const cy = 13.5;
+  const r = Math.hypot(x - cx, y - cy);
+  if (y < 28) {
+    if (r > 13.5) return '.';
+    if (r > 12.5) return 'k';
+    if (r > 10.5) return 'y';
+    // 数字
+    const dx = x - 13;
+    const dy = y - 10;
+    if (dx >= 0 && dx < 5 && dy >= 0 && dy < 7) return digit[dy][dx] === 'k' ? 'k' : 'w';
+    // 12・3・6・9 の目盛り
+    if ((Math.abs(x - cx) < 1 && r > 8.5) || (Math.abs(y - cy) < 1 && r > 8.5)) return 'd';
+    return 'w';
+  }
+  // 塔の柱
+  if (x < 11 || x > 20) return '.';
+  if (x === 11 || x === 20 || y === 39) return 'k';
+  return (y + x) % 6 === 0 ? 'd' : 'm';
+};
+
+// 第2章ボス
+const GRADION = [
+  '................................',
+  '................................',
+  '..........................kk....',
+  '.........................kwsk...',
+  '.............kkkkk......kwsk....',
+  '............ksssssk....kwsk.....',
+  '...kkkk....kswssssk...kwsk......',
+  '..kmmmmk...kssssssk..kwsk.......',
+  '.kmkmmkmk..kdkkkkdk.kwsk........',
+  '.kmmkkmmk..ksrrrrsk.kwk.........',
+  '.kmkmmkmk..kssssssk.kk..........',
+  '..kmmmmk.kkkkssssskkkyyk........',
+  '...kkkk.krrsssssssssskyk........',
+  '......kkrrsssmmmmmssskk.........',
+  '.....kbbkrssmmwwmmssk...........',
+  '....kbbbbkrsmmwwmmssk...........',
+  '....kbwbbkrssmmmmmssk...........',
+  '....kbbwbkrrsssssssrk...........',
+  '....kbbbbkrrsdddddsrk...........',
+  '.....kbbkrrrsdddddsrk...........',
+  '......kkkrrrsssssssrk...........',
+  '........krrrkssk.sskk...........',
+  '........krrrkssk.ssk............',
+  '........krrrkddk.ddk............',
+  '.........krrkddk.ddk............',
+  '..........kkkddk.ddk............',
+  '............kssk.ssk............',
+  '...........kssssksssk...........',
+  '...........kkkkkkkkkk...........',
+  '................................',
+  '................................',
+  '................................',
 ];
 
 export const CHARACTER_SPRITES: PixelSprite[] = [
@@ -312,6 +483,68 @@ export const CHARACTER_SPRITES: PixelSprite[] = [
     ],
   },
   personSprite('npc_villager', 'u', 'c', 'd'),
+
+  // ---------------------------------------------------------------- 第2章 灰の都
+  personSprite('npc_clerk', 'u', 'w', 'd'),
+  personSprite('npc_ash', 'd', 'm', 'n'),
+  {
+    key: 'armor_goblin',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 5 }],
+    frames: [
+      fit([...ARMOR_GOBLIN_TOP, '....kmk.kmk.....', '....kdk.kdk.....', '...kkk..kkk.....', '................'], 16),
+      fit([...ARMOR_GOBLIN_TOP, '...kmk..kmk.....', '...kdk..kdk.....', '..kkk...kkk.....', '................'], 16),
+    ],
+  },
+  {
+    key: 'golem',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 2 }],
+    frames: [fit(GOLEM, 16), fit(GOLEM.map((r) => r.replace(/y/g, 'o')), 16)],
+  },
+  {
+    key: 'shadow_wisp',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 6 }],
+    frames: [
+      fit([...SHADOW_TOP, '..kpp.kppk.ppk..', '.kp...kppk...pk.', '.k.....kk.....k.', '................'], 16),
+      fit([...SHADOW_TOP, '..kp.kppppk.pk..', '..kp..kppk..pk..', '...k...kk...k...', '................'], 16),
+    ],
+  },
+  {
+    key: 'mage_soldier',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: [fit(MAGE_SOLDIER, 16), fit(MAGE_SOLDIER.map((r, i) => (i === 3 ? r.replace('y', 'a') : r)), 16)],
+  },
+  {
+    key: 'runaway_car',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 10 }],
+    frames: [recolorCar(EMPTY_CAR_A, 'r', 'p', 'y'), recolorCar(EMPTY_CAR_B, 'r', 'p', 'y')],
+  },
+  // 廃高速道路に放置された、朽ちた FIT
+  { key: 'car_rust', width: 16, height: 16, frames: [recolorCar(EMPTY_CAR_A, 'u', 'Q', 'd')] },
+  {
+    // 灰の都の巨大時計（コマ0 =「5」、コマ1 =「4」）
+    key: 'big_clock',
+    width: 32,
+    height: 40,
+    frames: [clockFrame(DIGIT_5), clockFrame(DIGIT_4)],
+  },
+  {
+    // 第2章ボス「終焉騎士グラディオン」（右向き）
+    key: 'gradion',
+    width: 32,
+    height: 32,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: [fit(GRADION, 32), fit(GRADION.map((r, i) => (i >= 20 && i <= 24 ? r.replace('krrr', 'kkrr') : r)), 32)],
+  },
   carSprite('car_warrior', 'r', 'p'),
   carSprite('car_mage', 'b', 'n'),
   carSprite('car_hunter', 'g', 't'),
@@ -430,24 +663,9 @@ export const EFFECT_SPRITES: PixelSprite[] = [
       },
     ],
   },
-  {
-    // 青白い炎（ヴァルグの蒼炎）。3コマで揺らめく
-    key: 'fx_flame',
-    width: 8,
-    height: 10,
-    anims: [{ name: 'burn', frames: [0, 1, 2], frameRate: 12 }],
-    frames: [0, 1, 2].map((f): PixelGen => (x, y) => {
-      // しずく形：下が丸く、上がとがる。コマごとに先端が左右に揺れる
-      const sway = [0, 1, -1][f];
-      const cx = 3.5 + (sway * (9 - y)) / 9;
-      const halfW = y >= 6 ? 3.2 - (y - 6) * 0.35 : 0.5 + y * 0.45;
-      const d = Math.abs(x - cx);
-      if (d > halfW) return '.';
-      if (d < halfW * 0.35 && y > 3) return 'w';
-      if (d < halfW * 0.7) return 'a';
-      return 'c';
-    }),
-  },
+  // 青白い炎（ヴァルグの蒼炎）と、赤い炎（騎士の轍）
+  flameSprite('fx_flame', 'w', 'a', 'c'),
+  flameSprite('fx_flame_red', 'y', 'o', 'r'),
   {
     // ボウガンの矢（右向き。回転させて使う）
     key: 'fx_bolt',
@@ -659,6 +877,14 @@ const grassGen = (seed: number): PixelGen => (x, y) => {
   return 'G';
 };
 
+/** アスファルト（ひび割れ入り） */
+const asphaltGen: PixelGen = (x, y) => {
+  const n = noise(x, y, 51);
+  if (n < 4) return 'k';
+  if (n < 12) return 'm';
+  return 'd';
+};
+
 /** 石畳（互い違いのレンガ目地） */
 const stoneGen: PixelGen = (x, y) => {
   const off = Math.floor(y / 8) % 2 ? 4 : 0;
@@ -757,6 +983,39 @@ export const TILE_PIXELS: Record<string, PixelFrame> = {
     if (r >= 5 && r < 6.5) return 'a';
     if (r >= 6.5 && r < 7.5) return 'c';
     return stoneGen(x, y);
+  },
+  // ---- 灰の都・廃高速道路
+  ash_stone: (x, y) => {
+    const off = Math.floor(y / 8) % 2 ? 4 : 0;
+    if (y % 8 === 7 || (x + off) % 8 === 7) return 'd';
+    const n = noise(x, y, 41);
+    if (n < 6) return 'd';
+    if (n < 10) return 's';
+    return 'm';
+  },
+  ash_wall: (x, y) => {
+    if (y === 0) return 'k';
+    // 窓（ところどころ明かりがついている）
+    if (x % 5 >= 1 && x % 5 <= 2 && y % 6 >= 2 && y % 6 <= 4) return noise(Math.floor(x / 5), Math.floor(y / 6), 43) < 30 ? 'y' : 'n';
+    return noise(x, y, 44) < 8 ? 'm' : 'd';
+  },
+  ash_roof: (x, y) => (y % 4 === 3 ? 'k' : noise(x, y, 45) < 10 ? 's' : 'm'),
+  asphalt: (x, y) => asphaltGen(x, y),
+  lane: (x, y) => (x >= 7 && x <= 8 && y % 8 < 5 ? 'y' : asphaltGen(x, y)),
+  guardrail: (x, y) => {
+    if (x < 5 || x > 10) return asphaltGen(x, y);
+    if (x === 5 || x === 10) return 'k';
+    if (y % 8 === 0) return 'd';
+    return x === 7 || x === 8 ? 'w' : 's';
+  },
+  debris: (x, y) => {
+    // コンクリートの破片
+    const n = noise(Math.floor(x / 3), Math.floor(y / 3), 47);
+    if (n < 55) {
+      const e = noise(x, y, 48);
+      return e < 15 ? 'k' : e < 45 ? 'Y' : e < 80 ? 'V' : 's';
+    }
+    return asphaltGen(x, y);
   },
   water: (x, y) => {
     const wave = (x + Math.floor(y / 4) * 5) % 8;

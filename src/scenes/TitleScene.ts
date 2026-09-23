@@ -34,7 +34,8 @@ export class TitleScene extends Phaser.Scene {
     EventBus.on(GameEvents.ViewportChanged, layout);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off(GameEvents.ViewportChanged, layout));
 
-    const start = () => this.scene.start('Town', { areaId: 'town' });
+    // 今の章の拠点から始める
+    const start = () => this.scene.start('Town', { areaId: CHAPTERS[gameState.story.chapter]?.startArea ?? 'town' });
     this.input.once('pointerup', start);
     this.input.keyboard?.once('keydown', start);
   }
