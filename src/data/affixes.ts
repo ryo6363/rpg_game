@@ -15,6 +15,9 @@ const list: AffixDef[] = [
   { id: 'crit_rate', stat: 'critRate', mode: 'flat', min: 0.01, max: 0.03, perLevel: 0.002, slots: ['weapon', 'head', 'hands', 'accessory'], weight: 6, prefix: '冴えた' },
   { id: 'crit_dmg', stat: 'critDamage', mode: 'flat', min: 0.08, max: 0.15, perLevel: 0.01, slots: ['weapon', 'accessory'], weight: 5, prefix: '痛烈な' },
   { id: 'move_speed', stat: 'moveSpeed', mode: 'percent', min: 0.03, max: 0.06, perLevel: 0.002, slots: ['feet', 'accessory'], weight: 6, prefix: '疾風の' },
+  // 2周目から付く追加効果
+  { id: 'loop_crit_dmg', stat: 'critDamage', mode: 'flat', min: 0.2, max: 0.35, perLevel: 0.012, slots: ['weapon', 'accessory'], weight: 3, prefix: '輪廻の', minLoop: 2 },
+  { id: 'loop_atk_pct', stat: 'atk', mode: 'percent', min: 0.1, max: 0.15, perLevel: 0.006, slots: ['weapon', 'hands', 'accessory'], weight: 2, prefix: '周回者の', minLoop: 2 },
   { id: 'atk_speed', stat: 'attackSpeed', mode: 'percent', min: 0.04, max: 0.08, perLevel: 0.003, slots: ['weapon', 'hands', 'accessory'], weight: 6, prefix: '素早い' },
 ];
 

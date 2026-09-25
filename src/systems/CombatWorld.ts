@@ -20,6 +20,10 @@ export interface ProjectileSpec {
   hostile?: boolean;
   /** 1秒あたりに曲がる角度（ラジアン）。渦を巻く弾に使う */
   curve?: number;
+  /** プレイヤーを追いかける（1秒に曲がれる角度・ラジアン） */
+  homing?: number;
+  /** ほかの「ぶつかると爆発する弾」と触れると、両方が爆発する（ツインホーミング） */
+  meetExplode?: boolean;
 }
 
 /** 敵の攻撃の予兆範囲 */
@@ -123,6 +127,16 @@ export interface CombatWorld {
   vortexEffect(x: number, y: number, dir: number, duration: number): void;
   /** 頭上に吹き出しの台詞を出す */
   showSpeech(x: number, y: number, text: string): void;
+  /** 消える道路（予兆 → 穴）。lethal なら落ちると即死、そうでなければ power のダメージ */
+  spawnPit(x: number, y: number, w: number, h: number, warn: number, open: number, lethal: boolean, power?: number): void;
+  /** 穴に落ちた */
+  fallIntoPit(lethal: boolean, power: number): void;
+  /** 過去の景色を一定時間だけ浮かび上がらせる */
+  memoryFlash(x: number, y: number, duration: number, label?: boolean): void;
+  /** フィールドのしかけを追加・変更する（ZERO の「最後の記憶」） */
+  setGimmicks(cfg: import('../core/types').FieldGimmickDef): void;
+  /** ボスを倒したことにする（ZERO END を耐えきったとき） */
+  defeatEnemy(enemy: Enemy): void;
   /** 数字などを浮かび上がらせる（回復量など） */
   showFloat(x: number, y: number, text: string, color: string): void;
   /** 予兆範囲の判定時の演出（炎など） */

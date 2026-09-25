@@ -10,6 +10,8 @@ import { FieldScene } from './scenes/FieldScene';
 import { FlashbackScene } from './scenes/FlashbackScene';
 import { TitleCardScene } from './scenes/TitleCardScene';
 import { StatusScene } from './scenes/StatusScene';
+import { ChoiceScene } from './scenes/ChoiceScene';
+import { EndingScene } from './scenes/EndingScene';
 import { ChapterClearScene } from './scenes/ChapterClearScene';
 import { DebugScene } from './scenes/DebugScene';
 import { DialogScene } from './scenes/DialogScene';
@@ -77,6 +79,8 @@ const game = new Phaser.Game({
     FlashbackScene,
     TitleCardScene,
     StatusScene,
+    ChoiceScene,
+    EndingScene,
   ],
 });
 

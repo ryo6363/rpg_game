@@ -24,7 +24,29 @@ const list: ItemBaseDef[] = [
   { id: 'charm_safety', name: '交通安全のお守り', slot: 'accessory', icon: 'icon_charm', stats: { maxHp: 10 }, minLevel: 1 },
   { id: 'navi_old', name: '古いカーナビ', slot: 'accessory', icon: 'icon_navi', stats: { critRate: 0.02 }, minLevel: 1 },
 
+  // ---- 2周目から出る装備
+  { id: 'bumper_rinne', name: '輪廻のバンパー', slot: 'weapon', weaponType: 'bumper', icon: 'icon_bumper', stats: { atk: 9, critRate: 0.03 }, minLevel: 1, minLoop: 2 },
+  { id: 'engine_zero', name: 'ゼロ式魔導エンジン', slot: 'weapon', weaponType: 'engine', icon: 'icon_engine', stats: { atk: 10, critDamage: 0.15 }, minLevel: 1, minLoop: 2 },
+  { id: 'turret_loop', name: 'ループボウガン砲台', slot: 'weapon', weaponType: 'turret', icon: 'icon_turret', stats: { atk: 7, attackSpeed: 0.2 }, minLevel: 1, minLoop: 2 },
+  { id: 'charm_loop', name: '周回者のお守り', slot: 'accessory', icon: 'icon_charm', stats: { maxHp: 20, atk: 3 }, minLevel: 1, minLoop: 2 },
+
   // ---- イベント専用（ランダムドロップには出ない）
+  {
+    id: 'lost_memory',
+    name: '失われた記憶',
+    slot: 'accessory',
+    icon: 'icon_lost',
+    stats: { atk: 10, critRate: 0.05, critDamage: 0.2 },
+    minLevel: 1,
+    unique: true,
+    lore: [
+      '「……また、ここからか」 はじまりの森で、誰かが FIT のエンジンをかけた。',
+      '崩れる道路の上。ナビが言った。「巻き戻しますか？」 ――迷わず「はい」を押した。',
+      '街の人たちの笑い声。明日も同じ笑い声が聞けるなら、それでいいと思った。',
+      '黒い FIT が、静かに言う。「あなたが望むなら、何度でも」',
+      '「今度こそ、間に合わせる」 それが、何度目の誓いだったのか。',
+    ],
+  },
   { id: 'memory_crystal', name: '記憶の結晶', slot: 'accessory', icon: 'icon_memory', stats: { maxHp: 40, critRate: 0.05, critDamage: 0.2 }, minLevel: 1, unique: true },
   {
     id: 'rinne_shard',

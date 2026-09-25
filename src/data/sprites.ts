@@ -1288,6 +1288,189 @@ CHARACTER_SPRITES.push(
   },
 );
 
+// ---------------------------------------------------------------- 最終章 世界の果て
+
+/** 16x16 の絵を 2 倍（32x32）に拡大する（大きな FIT のボス） */
+const scale2 = (rows: string[]) => rows.flatMap((r) => {
+  const wide = [...r].map((ch) => ch + ch).join('');
+  return [wide, wide];
+});
+
+/** 時計の歯車をはめこんだゴーレム（クロノゴーレム） */
+const CHRONO_GOLEM = GOLEM.map((r, i) => (i === 8 ? r.replace('VVaVV', 'VyayV') : r));
+
+/** 記録から生まれた人影（データゴースト）：ところどころ欠けて、ちらつく */
+const dataGhost = (seed: number): PixelGen => (x, y) => {
+  const row = PERSON[y];
+  const ch = row?.[x] ?? '.';
+  if (ch === '.') return '.';
+  if (noise(x, y, seed) < 14) return '.';
+  if (ch === 'k') return 'n';
+  if (ch === 'H') return 'a';
+  if (ch === 'C') return 'c';
+  if (ch === 'D') return 'b';
+  if (ch === 'f') return 'a';
+  return 'w';
+};
+
+/** 砂時計のような時間の魔物（リピート） */
+const REPEAT = [
+  '................',
+  '....kkkkkkkk....',
+  '....kyyyyyyk....',
+  '.....kvvvvk.....',
+  '......kvvk......',
+  '.......kk.......',
+  '......kaak......',
+  '.....kawwak.....',
+  '....kaawwaak....',
+  '....kkkkkkkk....',
+  '....k......k....',
+  '...kk......kk...',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+
+CHARACTER_SPRITES.push(
+  personSprite('hero_ghost', 'u', 'r', 'd'),
+  {
+    // 最終ボス ZERO：黒い金属とエネルギーでできた大きな FIT。赤いヘッドライト
+    key: 'zero',
+    width: 32,
+    height: 32,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 6 }],
+    frames: [scale2(recolorCar(EMPTY_CAR_A, 'd', 'k', 'r')), scale2(recolorCar(EMPTY_CAR_B, 'd', 'k', 'w'))],
+  },
+  {
+    // 第二形態：赤い FIT（初代）
+    key: 'zero_red',
+    width: 32,
+    height: 32,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 10 }],
+    frames: [scale2(recolorCar(EMPTY_CAR_A, 'r', 'p', 'y')), scale2(recolorCar(EMPTY_CAR_B, 'r', 'p', 'y'))],
+  },
+  {
+    // 第二形態：水色の FIT（二代目）
+    key: 'zero_cyan',
+    width: 32,
+    height: 32,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 10 }],
+    frames: [scale2(recolorCar(EMPTY_CAR_A, 'c', 'b', 'w')), scale2(recolorCar(EMPTY_CAR_B, 'c', 'b', 'w'))],
+  },
+  {
+    key: 'repeat_wisp',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: [REPEAT, REPEAT.map((r, i) => (i === 7 ? r.replace('kawwak', 'kwaawk') : r))],
+  },
+  {
+    key: 'chrono_golem',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 2 }],
+    frames: [fit(recolor(CHRONO_GOLEM, { V: 'm', Y: 'd' }), 16), fit(recolor(CHRONO_GOLEM, { V: 'm', Y: 'd', a: 'w' }), 16)],
+  },
+  {
+    key: 'zero_hound',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 8 }],
+    frames: [
+      fit(recolor([...WOLF_TOP, '..kdk.....kdk...', '..kdk.....kdk...', '..kk......kk....', '................'], { m: 'd', s: 'w', r: 'a', d: 'n' }), 16),
+      fit(recolor([...WOLF_TOP, '...kdk...kdk....', '...kdk...kdk....', '....kk....kk....', '................'], { m: 'd', s: 'w', r: 'a', d: 'n' }), 16),
+    ],
+  },
+  {
+    key: 'data_ghost',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 8 }],
+    frames: [dataGhost(91), dataGhost(92)],
+  },
+  {
+    // 古代施設の「世界再構築システム」：FIT と同じ形をした装置
+    key: 'fit_device',
+    width: 32,
+    height: 32,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 2 }],
+    frames: [scale2(recolorCar(EMPTY_CAR_A, 'm', 'd', 'a')), scale2(recolorCar(EMPTY_CAR_A, 'm', 'd', 'w'))],
+  },
+  {
+    // 過去の主人公の記録が残された端末
+    key: 'memory_terminal',
+    width: 16,
+    height: 16,
+    anims: [{ name: 'idle', frames: [0, 1], frameRate: 3 }],
+    frames: [
+      [
+        '................',
+        '..kkkkkkkkkkkk..',
+        '..knnnnnnnnnnk..',
+        '..knaaanwaannk..',
+        '..knnnnnnnnnnk..',
+        '..knanaaanwnnk..',
+        '..knnnnnnnnnnk..',
+        '..kkkkkkkkkkkk..',
+        '......kmmk......',
+        '......kmmk......',
+        '.....kmmmmk.....',
+        '....kddddddk....',
+        '....kkkkkkkk....',
+        '................',
+        '................',
+        '................',
+      ],
+      [
+        '................',
+        '..kkkkkkkkkkkk..',
+        '..knnnnnnnnnnk..',
+        '..knwaanaaannk..',
+        '..knnnnnnnnnnk..',
+        '..knaawnanaank..',
+        '..knnnnnnnnnnk..',
+        '..kkkkkkkkkkkk..',
+        '......kmmk......',
+        '......kmmk......',
+        '.....kmmmmk.....',
+        '....kddddddk....',
+        '....kkkkkkkk....',
+        '................',
+        '................',
+        '................',
+      ],
+    ],
+  },
+);
+
+/** 丸い弾（色違い） */
+const orb = (key: string, core: string, mid: string, outer: string): PixelSprite => ({
+  key,
+  width: 6,
+  height: 6,
+  frames: [
+    (x, y) => {
+      const r = Math.hypot(x - 2.5, y - 2.5);
+      if (r < 1.2) return core;
+      if (r < 2.2) return mid;
+      if (r < 3) return outer;
+      return '.';
+    },
+  ],
+});
+
+EFFECT_SPRITES.push(orb('fx_orb_red', 'w', 'o', 'r'), orb('fx_orb_cyan', 'w', 'a', 'c'));
+
+// 前の周回のタイヤの跡（はじまりの森・2周目〜）
+CHARACTER_SPRITES.push({
+  key: 'tire_tracks',
+  width: 16,
+  height: 16,
+  frames: [(x, y) => ((x === 4 || x === 5 || x === 10 || x === 11) && (y + (x > 8 ? 2 : 0)) % 4 < 2 ? 'J' : '.')],
+});
+
 // ---------------------------------------------------------------- アイコン（12x12）
 
 const icon = (key: string, rows: string[]): PixelSprite => ({ key, width: 12, height: 12, frames: [rows] });
@@ -1474,6 +1657,20 @@ export const ICON_SPRITES: PixelSprite[] = [
     'kkkkkkkkkkk.',
     '............',
     '............',
+  ]),
+  icon('icon_lost', [
+    '............',
+    '....kkkk....',
+    '...kwaawk...',
+    '..kwa..awk..',
+    '..ka.kk.ak..',
+    '..ka.kk.ak..',
+    '..kwa..awk..',
+    '...kwaawk...',
+    '....kkkk....',
+    '.....kk.....',
+    '....kyyk....',
+    '....kkkk....',
   ]),
   icon('icon_bag', [
     '............',

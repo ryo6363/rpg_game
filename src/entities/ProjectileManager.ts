@@ -64,6 +64,20 @@ export class ProjectileManager {
         [p.vx, p.vy] = [p.vx * c - p.vy * sn, p.vx * sn + p.vy * c];
         p.img.setRotation(Math.atan2(p.vy, p.vx));
       }
+      if (p.spec.homing) {
+        // プレイヤーの方へ少しずつ曲がる
+        const pl = this.world.player;
+        const cur = Math.atan2(p.vy, p.vx);
+        let d = Math.atan2(pl.y - p.img.y, pl.x - p.img.x) - cur;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        const na = cur + Math.max(-p.spec.homing * dt, Math.min(p.spec.homing * dt, d));
+        const sp = Math.hypot(p.vx, p.vy);
+        p.vx = Math.cos(na) * sp;
+        p.vy = Math.sin(na) * sp;
+        p.img.setRotation(na);
+      }
+      if (p.spec.meetExplode && this.meet(p)) continue;
       const step = Math.hypot(p.vx, p.vy) * dt;
       p.img.x += p.vx * dt;
       p.img.y += p.vy * dt;
@@ -81,6 +95,23 @@ export class ProjectileManager {
       if (p.spec.hostile) this.checkPlayer(p);
       else this.checkEnemies(p);
     }
+  }
+
+  /** ぶつかると爆発する弾どうしが触れたら、両方爆発（近くのプレイヤーにも当たる） */
+  private meet(p: Projectile): boolean {
+    for (const q of this.list) {
+      if (q === p || !q.active || !q.spec.meetExplode) continue;
+      if (Math.hypot(q.img.x - p.img.x, q.img.y - p.img.y) > 6) continue;
+      const x = (p.img.x + q.img.x) / 2;
+      const y = (p.img.y + q.img.y) / 2;
+      this.finish(p, false);
+      this.finish(q, false);
+      this.world.showBlast(x, y, 16, 0xf4f4f4);
+      const pl = this.world.player;
+      if (!pl.dead && Math.hypot(pl.x - x, pl.y - y) <= 16 + pl.radius) this.world.damagePlayer(p.spec.power, x, y);
+      return true;
+    }
+    return false;
   }
 
   private checkEnemies(p: Projectile) {

@@ -20,6 +20,10 @@ export interface BuiltMap {
   isWall(x: number, y: number): boolean;
   /** その座標が浅瀬（移動が遅くなるタイル）か */
   isSlow(x: number, y: number): boolean;
+  /** 出入口のタイルの中心座標（時間の裂け目の演出用） */
+  exitTiles: { x: number; y: number }[];
+  /** その座標のタイルの文字 */
+  charAt(x: number, y: number): string | undefined;
 }
 
 export function buildAreaMap(scene: Phaser.Scene, area: AreaDef): BuiltMap {
@@ -68,6 +72,8 @@ export function buildAreaMap(scene: Phaser.Scene, area: AreaDef): BuiltMap {
     });
   });
 
+  const exitTiles: { x: number; y: number }[] = [];
+  exitGrid.forEach((row, ty) => row.forEach((ex, tx) => ex && exitTiles.push({ x: tx * ts + ts / 2, y: ty * ts + ts / 2 })));
   const walkable: { x: number; y: number }[] = [];
   data.forEach((row, ty) =>
     row.forEach((idx, tx) => {
@@ -93,6 +99,8 @@ export function buildAreaMap(scene: Phaser.Scene, area: AreaDef): BuiltMap {
       const idx = data[Math.floor(y / ts)]?.[Math.floor(x / ts)];
       return idx === undefined || TILE_TYPES[idx].collide;
     },
+    exitTiles,
+    charAt: (x, y) => rows[Math.floor(y / ts)]?.[Math.floor(x / ts)],
     isSlow: (x, y) => {
       const idx = data[Math.floor(y / ts)]?.[Math.floor(x / ts)];
       return idx !== undefined && !!TILE_TYPES[idx].slow;

@@ -15,6 +15,9 @@ import { AoeManager } from '../entities/AoeManager';
 import { HazardManager } from '../entities/HazardManager';
 import { SweepManager } from '../entities/SweepManager';
 import { WaterManager } from '../entities/WaterManager';
+import { PitManager } from '../entities/PitManager';
+import { FieldGimmicks, memoryFlash } from '../systems/FieldGimmicks';
+import type { FieldGimmickDef } from '../core/types';
 import { ProjectileManager } from '../entities/ProjectileManager';
 import { InputState } from '../input/InputState';
 import { rollDamage } from '../systems/Combat';
@@ -49,6 +52,11 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   protected hazards!: HazardManager;
   protected water!: WaterManager;
   protected sweeps!: SweepManager;
+  protected pits!: PitManager;
+  /** 最終章のフィールドのしかけ */
+  protected gimmicks: FieldGimmicks | null = null;
+  /** 最後に立っていた安全な場所（穴に落ちたときに戻る） */
+  private lastSafe = { x: 0, y: 0 };
   /** 最後にボスを倒した位置（イベントで物を出すときに使う） */
   protected lastBossPos: { x: number; y: number } | null = null;
   private arrive = '@';
@@ -95,6 +103,10 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.hazards = new HazardManager(this, this);
     this.water = new WaterManager(this, this.map.width, this.map.height);
     this.sweeps = new SweepManager(this, this);
+    this.pits = new PitManager(this, this);
+    this.lastSafe = { ...pos };
+    this.gimmicks = this.area.gimmicks ? new FieldGimmicks(this, this.area.gimmicks) : null;
+    if (this.area.riftExits) this.drawRifts();
     // 満ち引きする潮だまり
     if (this.area.tideMarker) for (const pos of this.map.markers.get(this.area.tideMarker) ?? []) this.water.addTide(pos.x, pos.y);
 
@@ -219,12 +231,15 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
 
   private updateObjects() {
     for (const o of this.objects) {
+      // 大きな物（ぶつかる装置など）は、ふちまで近づけば調べられる
+      const reach = Math.max(20, Math.max(o.img.width, o.img.height) / 2 + 10);
+      const dist = Math.hypot(o.img.x - this.player.x, o.img.y - this.player.y);
       if (o.touched) {
         // 離れたら、もう一度調べられる（宝箱・消えた物は除く）
-        if (!o.def.loot && !o.hiding && Math.hypot(o.img.x - this.player.x, o.img.y - this.player.y) > 34) o.touched = false;
+        if (!o.def.loot && !o.hiding && dist > reach + 14) o.touched = false;
         continue;
       }
-      if (Math.hypot(o.img.x - this.player.x, o.img.y - this.player.y) < 20) {
+      if (dist < reach) {
         if (o.def.loot) {
           // 宝箱：開けて装備を出す（1周に1回）
           o.touched = true;
@@ -300,7 +315,19 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
         this.dropStoryItem(createItem(then.baseId, then.rarity, enemyLevel(this.area.level)));
         return next();
       case 'flashback':
-        openOverlay(this, 'Flashback', { onComplete: next, variant: then.variant, cut: then.cut });
+        openOverlay(this, 'Flashback', { onComplete: next, variant: then.variant, cut: then.cut, captions: then.captions });
+        return;
+      case 'spawnBoss':
+        this.spawnBossNow(then.boss);
+        return next();
+      case 'loopChoice':
+        openOverlay(this, 'Choice', { question: then.question, onComplete: next });
+        return;
+      case 'ending':
+        this.collectDrops();
+        SaveManager.save();
+        this.scene.stop('UI');
+        this.scene.start('Ending');
         return;
       case 'spawnObject': {
         const def = this.area.objects?.find((o) => o.id === then.object);
@@ -416,6 +443,9 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
   /** 落ちている装備をすべて拾う（フィールドのみ） */
   protected collectDrops() {}
 
+  /** その場にボスを出す（フィールドのみ） */
+  protected spawnBossNow(_id: string) {}
+
   /** 宝箱の中身（フィールドでは地面に落とす） */
   protected dropLootAt(_x: number, _y: number, _minRarity: Rarity) {}
 
@@ -435,6 +465,13 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     this.hazards.update(dt);
     this.water.update(dt);
     this.sweeps.update(dt);
+    this.pits.update(dt);
+    this.gimmicks?.update(dt);
+    const pl = this.player;
+    if (!pl.dead && !this.pits.isDanger(pl.x, pl.y) && !this.map.isWall(pl.x, pl.y)) {
+      this.lastSafe.x = pl.x;
+      this.lastSafe.y = pl.y;
+    }
     if (!this.leaving && !this.player.dead) this.updateObjects();
     if (!this.leaving && !this.player.dead) {
       const exit = this.map.exitAt(this.player.x, this.player.y);
@@ -780,6 +817,95 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
 
   isWall(x: number, y: number): boolean {
     return this.map.isWall(x, y);
+  }
+
+  // ------------------------------------------------------------ 最終章（穴・しかけ）
+
+  spawnPit(x: number, y: number, w: number, h: number, warn: number, open: number, lethal: boolean, power = 0) {
+    this.pits.spawn(x, y, w, h, warn, open, lethal, power);
+  }
+
+  /** 穴に落ちた：即死、または大きなダメージを受けて直前の安全な場所へ */
+  fallIntoPit(lethal: boolean, power: number) {
+    const p = this.player;
+    if (p.dead) return;
+    this.tweens.add({ targets: p, scale: 0.2, alpha: 0.3, duration: 250 });
+    this.time.delayedCall(260, () => {
+      p.setScale(1).setAlpha(1);
+      if (DebugState.invincible) {
+        p.body.reset(this.lastSafe.x, this.lastSafe.y);
+        return;
+      }
+      if (lethal) {
+        EventBus.emit(GameEvents.Toast, '道路の下へ落ちた……', '#b13e53');
+        if (p.applyDamage(p.hp, true)) this.onPlayerDied();
+        this.emitHp();
+        return;
+      }
+      const amount = Math.max(1, Math.round(Math.max(power, p.stats.maxHp * 0.2)));
+      const died = p.applyDamage(amount, true);
+      this.floatText.show(p.x, p.y - 8, `${amount}`, '#b13e53');
+      this.emitHp();
+      if (died) this.onPlayerDied();
+      else p.body.reset(this.lastSafe.x, this.lastSafe.y);
+    });
+  }
+
+  memoryFlash(x: number, y: number, duration: number, label = true) {
+    memoryFlash(this, x, y, duration, label);
+  }
+
+  setGimmicks(cfg: FieldGimmickDef) {
+    if (this.gimmicks) this.gimmicks.setConfig(cfg);
+    else this.gimmicks = new FieldGimmicks(this, cfg);
+  }
+
+  /** ボスを倒したことにする（フィールドのみ） */
+  defeatEnemy(_enemy: Enemy) {}
+
+  /** 歩ける床か（壁・出入口・消えかけの道路でない） */
+  isWalkableFloor(x: number, y: number): boolean {
+    return !this.map.isWall(x, y) && !this.map.exitAt(x, y) && !this.pits.isDanger(x, y);
+  }
+
+  /** 空中の何もない場所（道路から少し離れた闇）の候補 */
+  voidSpots(): { x: number; y: number }[] {
+    const ts = 16;
+    const out: { x: number; y: number }[] = [];
+    for (let y = ts / 2; y < this.map.height; y += ts) {
+      for (let x = ts / 2; x < this.map.width; x += ts) {
+        if (this.map.charAt(x, y) !== '0') continue;
+        const near = [-2, 0, 2].some((dx) => [-2, 0, 2].some((dy) => !this.map.isWall(x + dx * ts, y + dy * ts)));
+        if (!near) out.push({ x, y });
+      }
+    }
+    return out;
+  }
+
+  /** フィールドのしかけの強さ（エリアのレベルの敵の攻撃力くらい） */
+  gimmickPower(): number {
+    return 22 * (1 + (enemyLevel(this.area.level) - 1) * 0.18);
+  }
+
+  /** 出入口を「時間の裂け目」として描く（渦を巻く紫と水色の光） */
+  private drawRifts() {
+    for (const t of this.map.exitTiles) {
+      const g = this.add.graphics().setDepth(-9000);
+      let a = Math.random() * Math.PI * 2;
+      this.time.addEvent({
+        delay: 50,
+        loop: true,
+        callback: () => {
+          a += 0.25;
+          g.clear();
+          for (let i = 0; i < 3; i++) {
+            const r = 7 - i * 2 + Math.sin(a + i) * 1;
+            g.lineStyle(1, i % 2 ? 0x73eff7 : 0xc58cff, 0.9).strokeEllipse(t.x, t.y, r * 2, r * 2.6);
+          }
+          g.fillStyle(0xffffff, 0.8).fillCircle(t.x + Math.cos(a * 2) * 3, t.y + Math.sin(a * 2) * 4, 1);
+        },
+      });
+    }
   }
 
   protected onPlayerDied() {

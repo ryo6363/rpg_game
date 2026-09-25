@@ -109,8 +109,11 @@ export interface JobDef {
   skills: { id: string; unlockLevel: number }[];
 }
 
-/** 敵AIの種類。melee = 近づいて攻撃（移動速度0なら固定砲台）/ boss = 攻撃パターンから選ぶ */
-export type EnemyAiKind = 'melee' | 'boss';
+/**
+ * 敵AIの種類。melee = 近づいて攻撃（移動速度0なら固定砲台）/ boss = 攻撃パターンから選ぶ /
+ * partner = ボスの相棒（2台目の FIT など。自分では攻撃せず、ボスの技で動かされる）
+ */
+export type EnemyAiKind = 'melee' | 'boss' | 'partner';
 
 /**
  * 予兆範囲（AoE）の形。向きは攻撃開始時の敵→プレイヤー方向
@@ -188,14 +191,20 @@ export interface EnemyAttackDef {
   // ---- 第4章（輪廻王クロノス）
   /** clockHands: 時計の針（中心から伸びる帯）が回る。speeds = 針ごとの回る速さ（ラジアン/秒） */
   hands?: { duration: number; width: number; speeds: number[] };
-  /** rewind: 直前 window 秒に受けたダメージの ratio を回復（最大 HP の max 割合まで） */
-  rewind?: { window: number; ratio: number; max: number };
+  /** rewind: 直前 window 秒に受けたダメージの ratio を回復（最大 HP の max 割合まで）。flat なら最大 HP のその割合を回復 */
+  rewind?: { window: number; ratio: number; max: number; flat?: number };
   /** reenact: 過去のボスの幻影が、そのボスの技を使う（pool から count 体、stagger 秒ずつずらす） */
   reenact?: { pool: { boss: string; pattern: string }[]; count: number; stagger: number };
   /** chains: プレイヤーの周りに円。中にいると鎖につながれて遅くなり、そのあと追撃 */
   chains?: { count: number; radius: number; slow: number; slowTime: number; followUp: AoeShape; followWindup: number };
   /** timeFreeze: 時間停止。moveTime 秒だけ動けて、そのあとは解除まで動けない */
   freeze?: { count: number; radius: number; moveTime: number };
+
+  // ---- 最終章（ZERO・赤と水色の FIT）
+  /** 四角いボスエリアの縦の半分（省略時は arenaRadius と同じ） */
+  arenaHalfH?: number;
+  /** 最終章の特殊技の細かい数値（技ごとに意味が違う。systems/ZeroAI.ts） */
+  opts?: Record<string, number>;
 }
 
 /**
@@ -218,7 +227,27 @@ export type EnemySpecial =
   | 'reenact'
   | 'chains'
   | 'doomClock'
-  | 'timeFreeze';
+  | 'timeFreeze'
+  // 最終章 ZERO（第一形態）
+  | 'zeroCannon'
+  | 'roadCollapse'
+  | 'endDrive'
+  | 'memoryRelease'
+  | 'zeroEnd'
+  // 最終章 赤と水色の FIT（第二形態）
+  | 'twinSplit'
+  | 'twinBoost'
+  | 'crossDrive'
+  | 'twinCircle'
+  | 'twinLaser'
+  | 'colorChange'
+  | 'twinSpin'
+  | 'twinTrails'
+  | 'doubleBrake'
+  | 'twinHoming'
+  | 'overtake'
+  | 'twinMeteor'
+  | 'twinOverdrive';
 
 /**
  * 予兆範囲の判定時の演出
@@ -239,6 +268,10 @@ export interface BossPatternDef extends EnemyAttackDef {
   minPhase?: number;
   /** このフェーズまでしか使わない */
   maxPhase?: number;
+  /** 1回の戦闘で使える回数（時間逆行など） */
+  maxUses?: number;
+  /** この周回数から使う（2周目以降の新しい技） */
+  minLoop?: number;
 }
 
 export interface EnemyDef {
@@ -282,8 +315,24 @@ export interface EnemyDef {
   tint?: number;
   /** 飛んでいる（影が離れて、上下にふわふわ揺れる） */
   hover?: boolean;
-  /** 体のまわりの演出（clock = 背後に回る時計盤） */
-  aura?: 'clock';
+  /** 体のまわりの演出（clock = 背後に回る時計盤 / echo = 過去のループの残像） */
+  aura?: 'clock' | 'echo';
+
+  // ---- 最終章
+  /** 出るたびにこの中から見た目を選ぶ（エコー：過去の敵の姿） */
+  spriteVariants?: string[];
+  /** 見た目をプレイヤーの今のジョブの車にする（残響の主人公） */
+  spriteFromJob?: boolean;
+  /** 攻撃していないとき、プレイヤーの動きをまねる（エコー） */
+  mimic?: boolean;
+  /** every 秒ごとに、every 秒前の位置へ戻る（リピート）。afterAttack なら攻撃のあとに戻り、heal の割合だけ回復（クロノゴーレム） */
+  timeLoop?: { every: number; afterAttack?: boolean; heal?: number };
+  /** この秒数がたつと消える（データゴースト） */
+  lifetime?: number;
+  /** 倒すと、一瞬だけ過去の景色が浮かぶ（ゼロ・ハウンド） */
+  deathFlash?: boolean;
+  /** every 秒ごとにジョブ（見た目と攻撃）を切り替える（残響の主人公：過去の装備に持ち替える） */
+  jobCycle?: { every: number; attacks: Record<JobId, EnemyAttackDef> };
 
   /** ---- ボスのみ */
   boss?: {
@@ -301,6 +350,12 @@ export interface EnemyDef {
     loot: { count: number; minRarity: Rarity };
     /** 倒れるときに体のあちこちで出す演出（水と水晶に崩れる など） */
     deathEffects?: AoeEffect[];
+    /** 出てきて最初に必ず使う技 */
+    opening?: string;
+    /** 相棒の敵 id（一緒に出て、ダメージは本体に入る。赤と水色の FIT） */
+    partner?: string;
+    /** HP が 0 になっても倒れず、この技を使い切ったら倒れる（ZERO END） */
+    finisher?: string;
   };
 }
 
@@ -337,6 +392,21 @@ export interface AreaObjectDef {
   hideWhen?: string;
 }
 
+/**
+ * 最終章のフィールドのしかけ
+ * vanish = 道路の一部が突然消える（落ちるとダメージ。lethal なら即死）
+ * memory = 一定時間だけ過去の章の景色が浮かび上がる
+ * echo = 過去のボスの技が突然発生する（pool = ボスと技の id）
+ * fragments = 空中に浮かぶ過去の景色のかけらの数
+ */
+export interface FieldGimmickDef {
+  vanish?: { interval: number; size: number; warn: number; duration: number; lethal?: boolean };
+  /** label = 「――○○の記憶」と表示する（省略時は表示。ボス戦では消す） */
+  memory?: { interval: number; duration: number; label?: boolean };
+  echo?: { interval: number; pool: { boss: string; pattern: string }[] };
+  fragments?: number;
+}
+
 /** エリア間の出入口 */
 export interface ExitDef {
   /** マップ上の文字（門のタイルとして描画される） */
@@ -368,8 +438,12 @@ export interface AreaDef {
   exits: ExitDef[];
   npcs?: NpcDef[];
   objects?: AreaObjectDef[];
-  /** ボスエリアならボスの敵 id と出現位置の文字 */
-  boss?: { id: string; marker: string };
+  /** ボスエリアならボスの敵 id と出現位置の文字。then = 倒したあとに出る第二形態（途中でエリアを出た場合用） */
+  boss?: { id: string; marker: string; then?: string };
+  /** 最終章のフィールドのしかけ（systems/FieldGimmicks.ts） */
+  gimmicks?: FieldGimmickDef;
+  /** 出入口を「時間の裂け目」として描く */
+  riftExits?: boolean;
   /** 満ち引きで現れたり消えたりする水たまりの位置の文字 */
   tideMarker?: string;
   /** このフラグが立っていると時間が止まっている（モノクロ・人々が動かない） */
@@ -416,8 +490,14 @@ export interface StoryEventDef {
     | { type: 'goTo'; area: string; arrive?: string }
     | { type: 'dropItem'; baseId: string; rarity: Rarity }
     | { type: 'npcMenu' }
-    /** 過去の映像の演出（variant = 映る場所 / cut = 途中で途切れる） */
-    | { type: 'flashback'; variant?: 'city' | 'fortress'; cut?: boolean }
+    /** 過去の映像の演出（variant = 映る場所 / cut = 途中で途切れる / captions = 映像に重ねる声） */
+    | { type: 'flashback'; variant?: 'city' | 'fortress' | 'ruin' | 'record'; cut?: boolean; captions?: string[] }
+    /** その場にボスを出す（第二形態） */
+    | { type: 'spawnBoss'; boss: string }
+    /** はい／いいえ を選ばせる（ループシステムの停止。選べるのは「はい」だけ） */
+    | { type: 'loopChoice'; question: string }
+    /** エンディング → タイトルへ（NEW LOOP） */
+    | { type: 'ending' }
     /** 巨大な時計が砕け、時間が止まる（モノクロのまま） */
     | { type: 'clockBreak' }
     /** 世界が光の粒になって崩れていく。主人公の FIT だけが残る */
@@ -464,6 +544,8 @@ export interface ItemBaseDef {
   unique?: boolean;
   /** 拾ったときに1つ選ばれて流れる記憶の断片 */
   lore?: string[];
+  /** この周回数からドロップする（2周目以降の新しい装備） */
+  minLoop?: number;
 }
 
 /** 追加効果の定義。data/affixes.ts */
@@ -482,6 +564,8 @@ export interface AffixDef {
   prefix: string;
   /** 指定すると「このスキルの威力 +x%」になる（stat は無視） */
   skill?: string;
+  /** この周回数から付く（2周目以降の新しい追加効果） */
+  minLoop?: number;
 }
 
 /** 実際に手に入る装備 */

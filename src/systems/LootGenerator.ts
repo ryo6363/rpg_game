@@ -1,4 +1,5 @@
 import { LOOT } from '../config/balance';
+import { gameState } from '../core/GameState';
 import type { ItemInstance, JobId, Rarity, Slot } from '../core/types';
 import { ITEM_BASES } from '../data/itemBases';
 import { JOBS } from '../data/jobs';
@@ -35,7 +36,11 @@ export function rollDrop(ctx: DropContext): ItemInstance | null {
 /** ランダムな装備を1つ作る。minRarity 未満のレアリティは引き直す（ボスの確定ドロップ用） */
 export function createRandomItem(ctx: DropContext, minRarity: Rarity = 'normal'): ItemInstance | null {
   const slot = weightedPick(Object.keys(LOOT.slotWeights) as Slot[], (s) => LOOT.slotWeights[s])!;
-  let candidates = Object.values(ITEM_BASES).filter((b) => b.slot === slot && !b.unique && b.minLevel <= ctx.itemLevel);
+  // 2周目以降だけの装備（minLoop）は、その周回から候補に入る
+  const loop = gameState.story.loop;
+  let candidates = Object.values(ITEM_BASES).filter(
+    (b) => b.slot === slot && !b.unique && b.minLevel <= ctx.itemLevel && (b.minLoop ?? 1) <= loop,
+  );
   if (slot === 'weapon' && Math.random() < LOOT.currentJobWeaponChance) {
     const wt = JOBS[ctx.jobId].weaponType;
     const own = candidates.filter((b) => b.weaponType === wt);
@@ -47,5 +52,5 @@ export function createRandomItem(ctx: DropContext, minRarity: Rarity = 'normal')
   let rarity = rollRarity(ctx.rarityBonus);
   const order: Rarity[] = ['normal', 'magic', 'rare', 'legendary'];
   if (order.indexOf(rarity) < order.indexOf(minRarity)) rarity = minRarity;
-  return createItem(base.id, rarity, ctx.itemLevel);
+  return createItem(base.id, rarity, ctx.itemLevel, loop);
 }

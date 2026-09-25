@@ -27,7 +27,8 @@ export function weightedPick<T>(entries: readonly T[], weight: (e: T) => number)
 }
 
 /** ベースとレアリティを指定して装備を1つ作る */
-export function createItem(baseId: string, rarity: Rarity, itemLevel: number): ItemInstance {
+/** loop = 今の周回（2周目以降だけの追加効果を候補に入れる） */
+export function createItem(baseId: string, rarity: Rarity, itemLevel: number, loop = 1): ItemInstance {
   const base = ITEM_BASES[baseId];
 
   // 基本性能
@@ -41,7 +42,10 @@ export function createItem(baseId: string, rarity: Rarity, itemLevel: number): I
   const [minN, maxN] = LOOT.affixCount[rarity];
   const count = Phaser.Math.Between(minN, maxN);
   const pool = Object.values(AFFIXES).filter(
-    (a) => a.slots.includes(base.slot) && (!a.skill || !base.weaponType || skillWeaponType(a.skill) === base.weaponType),
+    (a) =>
+      a.slots.includes(base.slot) &&
+      (a.minLoop ?? 1) <= loop &&
+      (!a.skill || !base.weaponType || skillWeaponType(a.skill) === base.weaponType),
   );
   const affixes: ItemInstance['affixes'] = [];
   for (let i = 0; i < count && pool.length > 0; i++) {

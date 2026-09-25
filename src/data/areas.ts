@@ -35,7 +35,10 @@ export const AREAS: Record<string, AreaDef> = {
         sprite: 'npc_garage',
         marker: 'g',
         action: 'jobChange',
-        lines: [{ s: '親方', t: 'どの車で出る？ レベルは車ごとに別だからな。' }],
+        lines: [
+          { s: '親方', t: 'どの車で出る？ レベルは車ごとに別だからな。' },
+          { s: '親方', t: '……おかえり。いや、初めましてだったか？ あんたの顔を見ると、なぜか懐かしくてな。', minLoop: 2 },
+        ],
       },
       {
         id: 'mechanic',
@@ -43,7 +46,10 @@ export const AREAS: Record<string, AreaDef> = {
         sprite: 'npc_mechanic',
         marker: 'm',
         action: 'upgrade',
-        lines: [{ s: '整備士', t: 'パーツの強化ならまかせて！ ゴールドはもらうけどね。' }],
+        lines: [
+          { s: '整備士', t: 'パーツの強化ならまかせて！ ゴールドはもらうけどね。' },
+          { s: '整備士', t: 'その車……前にも整備した気がするんだよね。ボルトの締め方に、あたしのクセがある。', minLoop: 2 },
+        ],
       },
       {
         id: 'villager',
@@ -55,6 +61,7 @@ export const AREAS: Record<string, AreaDef> = {
           { s: '住民', t: '最近、森の奥でモンスターが増えてるんだって。' },
           { s: '住民', t: 'しかも変なの。森から「街のほう」へ向かってくるんだよ。' },
           { s: '住民', t: 'ふつうは森の奥へ逃げるはずなのにね……。' },
+          { s: '住民', t: '……あれ？ この話、前にもあなたにしたっけ？', minLoop: 2 },
         ],
       },
       {
@@ -89,6 +96,8 @@ export const AREAS: Record<string, AreaDef> = {
       { char: '_', to: 'town', arrive: 's' },
       { char: '^', to: 'ch1_field2', arrive: '@' },
     ],
+    // 前の周回の痕跡（2周目〜）
+    objects: [{ id: 'loop_tracks', sprite: 'tire_tracks', marker: 'Q', minLoop: 2 }],
   },
   ch1_field2: {
     id: 'ch1_field2',
@@ -113,6 +122,7 @@ export const AREAS: Record<string, AreaDef> = {
     objects: [
       { id: 'wreck', sprite: 'car_wreck', marker: 'W' },
       { id: 'zero_sign', sprite: 'sign_zero', marker: 'Z', minLoop: 10 },
+      { id: 'loop_note', sprite: 'memory_terminal', marker: 'E', minLoop: 3 },
     ],
   },
   ch1_boss: {
@@ -537,7 +547,8 @@ export const AREAS: Record<string, AreaDef> = {
     boss: { id: 'chronos', marker: 'B' },
   },
 
-  // ---------------------------------------------------------------- 最終章 世界の果て（入口）
+  // ---------------------------------------------------------------- 最終章 世界の果て
+  // 空も地面も崩れ、道路だけが空中に残っている。時間が壊れていて、過去の章の景色や敵・ボスの技が混ざる
   world_end: {
     id: 'world_end',
     chapter: 5,
@@ -547,9 +558,136 @@ export const AREAS: Record<string, AreaDef> = {
     floor: 'A',
     border: '0',
     level: 24,
+    maxEnemies: 12,
+    riftExits: true,
+    enemies: [
+      { id: 'echo', weight: 4 },
+      { id: 'repeat', weight: 3 },
+      { id: 'zero_hound', weight: 2 },
+      { id: 'data_ghost', weight: 2 },
+      { id: 'armor_goblin', weight: 1 },
+      { id: 'sahagin', weight: 1 },
+      { id: 'echo_hero', weight: 0.4 },
+    ],
+    gimmicks: {
+      vanish: { interval: 7, size: 32, warn: 1.5, duration: 5 },
+      memory: { interval: 9, duration: 3 },
+      echo: { interval: 14, pool: [
+        { boss: 'varg', pattern: 'breath' },
+        { boss: 'varg', pattern: 'flame_rain' },
+        { boss: 'gradion', pattern: 'kings_pursuit' },
+        { boss: 'gradion', pattern: 'cross_slash' },
+        { boss: 'abyss_dragoon', pattern: 'crystal_rain' },
+        { boss: 'chronos', pattern: 'time_bomb' },
+      ] },
+      fragments: 10,
+    },
+    exits: [{ char: '^', to: 'ch5_field2', arrive: '@' }],
+    objects: [
+      { id: 'old_fit', sprite: 'car_wreck', marker: 'W', solid: true },
+      { id: 'chest', sprite: 'chest', marker: 'y', loot: { minRarity: 'rare' } },
+    ],
+  },
+  ch5_field2: {
+    id: 'ch5_field2',
+    chapter: 5,
+    name: '記憶の回廊',
+    type: 'field',
+    map: 'ch5_field2',
+    floor: 'A',
+    border: '0',
+    level: 26,
+    maxEnemies: 13,
+    riftExits: true,
+    enemies: [
+      { id: 'echo', weight: 3 },
+      { id: 'repeat', weight: 2 },
+      { id: 'zero_hound', weight: 2 },
+      { id: 'chrono_golem', weight: 2 },
+      { id: 'data_ghost', weight: 2 },
+      { id: 'fallen_soldier', weight: 1 },
+      { id: 'mage_soldier', weight: 1 },
+      { id: 'echo_hero', weight: 0.5 },
+    ],
+    gimmicks: {
+      vanish: { interval: 6, size: 32, warn: 1.4, duration: 5 },
+      memory: { interval: 7, duration: 3 },
+      echo: { interval: 11, pool: [
+        { boss: 'varg', pattern: 'breath' },
+        { boss: 'varg', pattern: 'flame_rain' },
+        { boss: 'gradion', pattern: 'kings_pursuit' },
+        { boss: 'gradion', pattern: 'cross_slash' },
+        { boss: 'abyss_dragoon', pattern: 'crystal_rain' },
+        { boss: 'chronos', pattern: 'time_bomb' },
+      ] },
+      fragments: 10,
+    },
+    exits: [
+      { char: '_', to: 'world_end', arrive: 'n' },
+      { char: '^', to: 'ch5_field3', arrive: '@' },
+    ],
+    objects: [
+      { id: 'reconstructor', sprite: 'fit_device', marker: 'M', solid: true },
+      { id: 'chest', sprite: 'chest', marker: 'y', loot: { minRarity: 'rare' } },
+    ],
+  },
+  ch5_field3: {
+    id: 'ch5_field3',
+    chapter: 5,
+    name: '記録の深淵',
+    type: 'field',
+    map: 'ch5_field3',
+    floor: 'A',
+    border: '0',
+    level: 28,
+    maxEnemies: 14,
+    riftExits: true,
+    enemies: [
+      { id: 'chrono_golem', weight: 3 },
+      { id: 'data_ghost', weight: 3 },
+      { id: 'echo', weight: 2 },
+      { id: 'zero_hound', weight: 2 },
+      { id: 'black_knight', weight: 1 },
+      { id: 'dragon_knight', weight: 1 },
+      { id: 'echo_hero', weight: 0.6 },
+    ],
+    // 奥へ進むほど、過去の記憶がはっきりしてくる（景色がよく浮かぶ）
+    gimmicks: {
+      vanish: { interval: 5, size: 32, warn: 1.4, duration: 5 },
+      memory: { interval: 4.5, duration: 3.5 },
+      echo: { interval: 9, pool: [
+        { boss: 'varg', pattern: 'breath' },
+        { boss: 'varg', pattern: 'flame_rain' },
+        { boss: 'gradion', pattern: 'kings_pursuit' },
+        { boss: 'gradion', pattern: 'cross_slash' },
+        { boss: 'abyss_dragoon', pattern: 'crystal_rain' },
+        { boss: 'chronos', pattern: 'time_bomb' },
+      ] },
+      fragments: 12,
+    },
+    exits: [
+      { char: '_', to: 'ch5_field2', arrive: 'n' },
+      { char: '^', to: 'ch5_boss', arrive: '@' },
+    ],
+    objects: [
+      { id: 'last_record', sprite: 'memory_terminal', marker: 'E', solid: true },
+      { id: 'chest', sprite: 'chest', marker: 'y', loot: { minRarity: 'rare' } },
+    ],
+  },
+  ch5_boss: {
+    id: 'ch5_boss',
+    chapter: 5,
+    name: '世界の果て・最深部',
+    type: 'field',
+    map: 'ch5_boss',
+    floor: 'A',
+    border: '0',
+    level: 30,
     maxEnemies: 0,
+    riftExits: true,
     enemies: [],
-    exits: [],
-    objects: [{ id: 'road_end', sprite: 'road_end', marker: 'E', solid: true }],
+    gimmicks: { fragments: 6 },
+    exits: [{ char: '_', to: 'ch5_field3', arrive: 'n' }],
+    boss: { id: 'zero', marker: 'B', then: 'zero_twin' },
   },
 };

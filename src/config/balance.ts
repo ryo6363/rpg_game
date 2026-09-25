@@ -172,6 +172,11 @@ export const LOOP = {
   enemyCountFirst: 0.6,
   enemyCountPerLoop: 0.15,
   enemyCountMax: 1.2,
+  /** 1周ごとの敵の HP・攻撃力の上乗せ（レベルとは別。2周目 +15%、3周目 +30% …） */
+  statPerLoop: 0.15,
+  /** 1周ごとにボスの攻撃間隔が縮む割合（下限 bossIntervalMin） */
+  bossIntervalPerLoop: 0.07,
+  bossIntervalMin: 0.6,
 } as const;
 
 /** 会話 */

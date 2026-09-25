@@ -289,29 +289,4 @@ export const CHAPTER4_EVENTS: StoryEventDef[] = [
     ],
     then: { type: 'titleCard', title: '最終章', subtitle: '世界の果て', area: 'world_end' },
   },
-
-  // ---------------------------------------------------------------- 世界の果て（最終章の入口）
-  {
-    id: 'world_end_arrive',
-    trigger: { type: 'areaEnter', area: 'world_end' },
-    lines: [
-      { t: '何もない。' },
-      { t: '空も、地面も、音もない。ただ一本の道路だけが、暗闇の中へまっすぐ伸びている。' },
-      { s: NAVI, t: '目的地まで、あと……計測できません。' },
-      { s: ME, t: '……行くしかないか。' },
-    ],
-  },
-  {
-    // 最終章は準備中：道の終わりで、第4章のクリア画面（周回できる）
-    id: 'road_end',
-    trigger: { type: 'touch', object: 'road_end' },
-    unless: [],
-    lines: [
-      { t: '道路は、そこで途切れていた。' },
-      { t: 'その先には、まだ何もない。' },
-      { s: NAVI, t: 'ルートを生成しています……しばらくお待ちください。' },
-      { t: '（最終章「世界の果て」は準備中です）' },
-    ],
-    then: { type: 'chapterClear', chapter: 4 },
-  },
 ];

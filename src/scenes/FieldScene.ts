@@ -64,14 +64,56 @@ export class FieldScene extends WorldScene {
   /** ボスエリアならボスを出す（この周回で倒していなければ） */
   private spawnBoss() {
     const b = this.area.boss;
-    if (!b || hasFlag(`defeated_${b.id}`)) return;
+    if (!b) return;
     const pos = this.map.markers.get(b.marker)?.[0];
     if (!pos) return;
+    // 第一形態を倒したあと（第二形態の途中でエリアを出た場合）は、第二形態から
+    let id = b.id;
+    if (hasFlag(`defeated_${b.id}`)) {
+      if (!b.then || hasFlag(`defeated_${b.then}`)) return;
+      id = b.then;
+    }
+    this.placeBoss(id, pos.x, pos.y);
+  }
+
+  /** ボスを置く（相棒がいれば一緒に。相棒のダメージは本体に入る） */
+  private placeBoss(id: string, x: number, y: number) {
+    const def = ENEMIES[id];
     const e = new Enemy(this);
     this.enemies.push(e);
     this.enemyGroup.add(e);
-    e.spawn(ENEMIES[b.id], pos.x, pos.y, enemyLevel(this.area.level));
+    e.spawn(def, x, y, enemyLevel(this.area.level));
     this.boss = e;
+    if (def.boss?.partner) {
+      const c = new Enemy(this);
+      this.enemies.push(c);
+      this.enemyGroup.add(c);
+      c.spawn(ENEMIES[def.boss.partner], x, y, enemyLevel(this.area.level));
+      c.homeX = x;
+      c.homeY = y;
+      c.link = e;
+      e.partner = c;
+    }
+  }
+
+  /** イベントで第二形態を出す（倒した場所・なければエリアの中心） */
+  protected spawnBossNow(id: string) {
+    const b = this.area.boss;
+    const pos = (b && this.map.markers.get(b.marker)?.[0]) ?? { x: this.player.x, y: this.player.y - 40 };
+    this.placeBoss(id, pos.x, pos.y);
+    const e = this.boss!;
+    // 第一形態が消えた場所から現れる
+    if (this.lastBossPos) e.body.reset(this.lastBossPos.x, this.lastBossPos.y);
+    e.partner?.body.reset(e.x, e.y);
+    e.setAlpha(0);
+    this.tweens.add({ targets: [e, e.partner].filter(Boolean), alpha: 1, duration: 500 });
+  }
+
+  /** ZERO END を耐えきったとき：ボスを倒す */
+  defeatEnemy(enemy: Enemy) {
+    enemy.finisherDone = true;
+    enemy.hp = 1;
+    this.damageEnemy(enemy, 9999, enemy.x, enemy.y);
   }
 
   // ------------------------------------------------------------ 敵の出現
@@ -111,8 +153,20 @@ export class FieldScene extends WorldScene {
     return this.liveEnemies;
   }
 
+  /** 相棒に当てたとき、数字などは相棒の位置に出す */
+  private hitAt: { x: number; y: number } | null = null;
+
   damageEnemy(enemy: Enemy, power: number, fromX: number, fromY: number) {
     if (!enemy.alive) return;
+    // 相棒（水色の FIT）のダメージは本体に入る
+    if (enemy.link) {
+      this.hitAt = { x: enemy.x, y: enemy.y };
+      this.damageEnemy(enemy.link, power, fromX, fromY);
+      this.hitAt = null;
+      return;
+    }
+    const hx = this.hitAt?.x ?? enemy.x;
+    const hy = this.hitAt?.y ?? enemy.y;
     const res = rollDamage(this.player.stats, power, enemy.defense);
     // 防御姿勢中はダメージが減る
     res.amount = Math.max(1, Math.round(res.amount * enemy.damageMultiplier));
@@ -129,8 +183,8 @@ export class FieldScene extends WorldScene {
         this.showSpeech(enemy.x, enemy.y - 4, barks[1]);
       }
     }
-    this.floatText.show(enemy.x, enemy.y - 6, `${res.amount}`, res.crit ? '#ffcd75' : '#f4f4f4', res.crit);
-    this.sparks.explode(res.crit ? 8 : 4, enemy.x, enemy.y);
+    this.floatText.show(hx, hy - 6, `${res.amount}`, res.crit ? '#ffcd75' : '#f4f4f4', res.crit);
+    this.sparks.explode(res.crit ? 8 : 4, hx, hy);
     // ボスに最初の一撃を当てたとき・フェーズが変わったときの台詞
     if (enemy.isBoss && !enemy.hitOnce && !died) {
       enemy.hitOnce = true;
@@ -145,6 +199,8 @@ export class FieldScene extends WorldScene {
         this.onBossDefeated(enemy);
         return;
       }
+      // 倒すと一瞬だけ過去の景色が見える（ゼロ・ハウンド）
+      if (enemy.def.deathFlash) this.memoryFlash(enemy.x, enemy.y, 1.2);
       this.respawnTimers.push(ENEMY.respawnDelay);
       const item = rollDrop({
         itemLevel: enemy.level,
@@ -169,6 +225,16 @@ export class FieldScene extends WorldScene {
   private onBossDefeated(boss: Enemy) {
     const def = boss.def;
     this.lastBossPos = { x: boss.x, y: boss.y };
+    // 相棒も一緒に消える
+    const c = boss.partner;
+    if (c?.alive) {
+      c.setEnemyState('dead');
+      c.body.enable = false;
+      this.tweens.add({ targets: c, alpha: 0, duration: BOSS.deathTime * 1000, onComplete: () => c.deactivate() });
+    }
+    // 残っている穴・しかけを止める
+    this.pits.clear();
+    this.gimmicks?.setConfig({ vanish: undefined, echo: undefined, memory: undefined });
     setFlag(`defeated_${def.id}`);
     this.cameras.main.flash(400, 255, 255, 255);
     this.time.addEvent({
@@ -290,7 +356,14 @@ export class FieldScene extends WorldScene {
     for (const e of this.enemies) if (e.alive && !e.hidden) this.liveEnemies.push(e);
 
     this.updateWorld(dt);
-    for (const e of this.enemies) if (e.alive) e.updateEnemy(dt, this);
+    for (const e of this.enemies) {
+      if (e.alive) e.updateEnemy(dt, this);
+      // 寿命で消えた敵（データゴースト）も、しばらくすると別の敵が出る
+      if (e.expired) {
+        e.expired = false;
+        this.respawnTimers.push(ENEMY.respawnDelay);
+      }
+    }
 
     // 再出現
     for (let i = this.respawnTimers.length - 1; i >= 0; i--) {

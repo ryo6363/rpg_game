@@ -3,6 +3,7 @@ import { CHAPTER1_EVENTS } from './chapter1';
 import { CHAPTER2_EVENTS } from './chapter2';
 import { CHAPTER3_EVENTS } from './chapter3';
 import { CHAPTER4_EVENTS } from './chapter4';
+import { CHAPTER5_EVENTS } from './chapter5';
 
 // 章ごとのストーリーイベントをまとめる。第3章以降はファイルを足してここに並べる
-export const STORY_EVENTS: StoryEventDef[] = [...CHAPTER1_EVENTS, ...CHAPTER2_EVENTS, ...CHAPTER3_EVENTS, ...CHAPTER4_EVENTS];
+export const STORY_EVENTS: StoryEventDef[] = [...CHAPTER1_EVENTS, ...CHAPTER2_EVENTS, ...CHAPTER3_EVENTS, ...CHAPTER4_EVENTS, ...CHAPTER5_EVENTS];

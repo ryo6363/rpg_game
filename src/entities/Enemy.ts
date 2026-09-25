@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
-import { BOSS, COMBAT, ENEMY } from '../config/balance';
-import type { EnemyAttackDef, EnemyDef } from '../core/types';
+import { BOSS, COMBAT, ENEMY, LOOP } from '../config/balance';
+import { gameState } from '../core/GameState';
+import type { EnemyAttackDef, EnemyDef, JobId } from '../core/types';
+import { JOBS } from '../data/jobs';
 import type { CombatWorld } from '../systems/CombatWorld';
 import { ENEMY_AI } from '../systems/EnemyAI';
 
@@ -54,6 +56,31 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   barked = { hit: false, half: false };
   /** 普通の攻撃を何回使ったか（altAttack の切り替え用） */
   attackCount = 0;
+
+  // ---- 最終章
+  /** 相棒（赤い FIT にとっての水色の FIT） */
+  partner: Enemy | null = null;
+  /** 本体（水色の FIT にとっての赤い FIT）。受けたダメージは本体に入る */
+  link: Enemy | null = null;
+  /** 技で動かされている間は、自分では動かない */
+  controlled = false;
+  /** ZERO END：HP が 0 になって最後の技に入った / 最後の技を耐えきられた */
+  finisherArmed = false;
+  finisherDone = false;
+  /** 技ごとの使用回数（maxUses） */
+  uses = new Map<string, number>();
+  /** 攻撃の差し替え（残響の主人公のジョブ切り替え） */
+  attackOverride: EnemyAttackDef | null = null;
+  private lifeLeft = 0;
+  /** 寿命で消えた（フィールドが次の敵を出す） */
+  expired = false;
+  private loopTimer = 0;
+  private history: { t: number; x: number; y: number }[] = [];
+  private age = 0;
+  private prevState: EnemyState = 'idle';
+  private cycleTimer = 0;
+  private cycleIndex = 0;
+  private echoes: Phaser.GameObjects.Image[] = [];
   /** 受けたダメージの記録（時間逆行で使う） */
   private damageLog: { t: number; amount: number }[] = [];
   /** 背後の時計盤など */
@@ -88,9 +115,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.def = def;
     this.level = level;
     const lv = level - 1;
-    this.maxHp = Math.round(def.hp * (1 + lv * ENEMY.hpPerLevel));
+    // 周回ごとの上乗せ（レベルとは別）
+    const loopMul = 1 + (gameState.story.loop - 1) * LOOP.statPerLoop;
+    this.maxHp = Math.round(def.hp * (1 + lv * ENEMY.hpPerLevel) * loopMul);
     this.hp = this.maxHp;
-    this.atk = def.atk * (1 + lv * ENEMY.atkPerLevel);
+    this.atk = def.atk * (1 + lv * ENEMY.atkPerLevel) * loopMul;
     this.defense = def.def + lv * 0.5;
     this.radius = def.bodyRadius;
     this.phase = 1;
@@ -113,9 +142,31 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.attackCount = 0;
     this.damageLog = [];
     this.aura?.destroy();
-    this.aura = def.aura ? this.scene.add.graphics() : null;
+    this.aura = def.aura === 'clock' ? this.scene.add.graphics() : null;
+    this.partner = null;
+    this.link = null;
+    this.controlled = false;
+    this.finisherArmed = false;
+    this.finisherDone = false;
+    this.uses = new Map();
+    this.attackOverride = null;
+    this.lifeLeft = def.lifetime ?? 0;
+    this.loopTimer = def.timeLoop?.every ?? 0;
+    this.history = [];
+    this.age = 0;
+    this.prevState = 'idle';
+    this.cycleTimer = def.jobCycle?.every ?? 0;
+    this.cycleIndex = 0;
+    this.echoes.forEach((i) => i.destroy());
+    this.echoes = [];
+    if (def.boss?.opening) this.forcedPattern = def.boss.opening;
 
-    this.setTexture(def.sprite, 0);
+    // 見た目：候補から選ぶ／プレイヤーのジョブの車
+    let sprite = def.sprite;
+    if (def.spriteVariants?.length) sprite = def.spriteVariants[Math.floor(Math.random() * def.spriteVariants.length)];
+    if (def.spriteFromJob) sprite = JOBS[gameState.currentJob].sprite;
+    if (def.jobCycle) this.setJob(gameState.currentJob, false);
+    this.setTexture(sprite, 0);
     this.setPosition(x, y).setActive(true).setVisible(true).setAlpha(1).setScale(1).setAngle(0);
     this.resetTint();
     this.body.enable = true;
@@ -129,8 +180,14 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       .setTexture(w > 16 ? 'shadow_wide' : 'shadow', 0)
       .setScale(w > 16 ? 1.6 : 1)
       .setVisible(true);
-    this.anims.play(`${def.sprite}_idle`, true);
+    this.playIdle();
     this.anims.setProgress(Math.random());
+    // 過去のループの残像（本体の少し後ろをついてくる）
+    if (def.aura === 'echo') {
+      for (let i = 0; i < 3; i++) {
+        this.echoes.push(this.scene.add.image(x, y, this.texture.key, 0).setTintFill(0x73eff7).setAlpha(0.25 - i * 0.07));
+      }
+    }
     this.setEnemyState('idle', Math.random() * 2);
   }
 
@@ -150,6 +207,36 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   get guarding(): boolean {
     return this.guardLeft > 0;
+  }
+
+  /** 待機アニメ（車の見た目なら走るアニメ） */
+  private playIdle() {
+    const key = this.texture.key;
+    const anim = this.scene.anims.exists(`${key}_idle`) ? `${key}_idle` : `${key}_move`;
+    if (this.scene.anims.exists(anim)) this.anims.play(anim, true);
+  }
+
+  /** 残響の主人公：ジョブ（見た目と攻撃）を切り替える */
+  private setJob(job: JobId, flash = true) {
+    const cyc = this.def.jobCycle!;
+    this.attackOverride = cyc.attacks[job];
+    this.setTexture(JOBS[job].sprite, 0);
+    this.playIdle();
+    if (flash) {
+      this.hitFlash = 0.15;
+      this.scene.tweens.add({ targets: this, scale: 1.3, duration: 90, yoyo: true });
+    }
+  }
+
+  /** 位置を記録から戻す（リピート・クロノゴーレム）。残像を残す */
+  private rewindPosition(seconds: number, heal = 0) {
+    const target = this.history.find((h) => h.t >= this.age - seconds) ?? this.history[0];
+    if (!target) return;
+    const ghost = this.scene.add.image(this.x, this.y, this.texture.key, this.frame.name).setTintFill(0x73eff7).setAlpha(0.5).setFlipX(this.flipX);
+    this.scene.tweens.add({ targets: ghost, alpha: 0, duration: 400, onComplete: () => ghost.destroy() });
+    this.body.reset(target.x, target.y);
+    if (heal > 0) this.hp = Math.min(this.maxHp, this.hp + this.maxHp * heal);
+    this.hitFlash = 0.1;
   }
 
   /** 元の色に戻す（強化版の敵は色味つき） */
@@ -188,6 +275,16 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.def.boss) {
       this.damageLog.push({ t: this.scene.time.now, amount });
       if (this.damageLog.length > 200) this.damageLog.shift();
+    }
+    // ZERO END：HP が 0 になっても倒れず、最後の技に入る
+    const finisher = this.def.boss?.finisher;
+    if (this.hp <= 0 && finisher && !this.finisherDone) {
+      this.hp = 1;
+      if (!this.finisherArmed) {
+        this.finisherArmed = true;
+        this.forcedPattern = finisher;
+      }
+      return { died: false, phaseUp: false, guardStarted: false };
     }
     if (this.hp <= 0) {
       this.die();
@@ -252,6 +349,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   deactivate() {
     this.aura?.destroy();
     this.aura = null;
+    this.echoes.forEach((i) => i.destroy());
+    this.echoes = [];
     this.setActive(false).setVisible(false);
     this.body.enable = false;
     this.shadow.setVisible(false);
@@ -293,6 +392,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       }
     }
     this.guardLeft -= dt;
+    this.updateFinalChapter(dt);
+    if (!this.active) return;
 
     ENEMY_AI[this.def.ai](this, dt, world);
 
@@ -320,6 +421,61 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
     this.shadow.setPosition(Math.round(this.x), Math.round(this.y + footY)).setDepth(this.y - 1);
     if (this.aura) this.drawClockAura(dt);
+  }
+
+  /** 最終章の敵の特別な動き（寿命・時間の巻き戻し・ジョブの切り替え・残像） */
+  private updateFinalChapter(dt: number) {
+    const def = this.def;
+    this.age += dt;
+    // 位置の記録（0.1 秒ごと・3 秒ぶん）
+    if (def.timeLoop || def.aura === 'echo') {
+      const last = this.history[this.history.length - 1];
+      if (!last || this.age - last.t >= 0.1) this.history.push({ t: this.age, x: this.x, y: this.y });
+      while (this.history.length > 30) this.history.shift();
+    }
+    // 残像
+    this.echoes.forEach((img, i) => {
+      const h = this.history[Math.max(0, this.history.length - 1 - (i + 1) * 3)];
+      if (h) img.setPosition(h.x, h.y).setDepth(this.y - 1 - i).setFlipX(this.flipX).setTexture(this.texture.key, this.frame.name);
+      img.setVisible(this.visible && !this.hidden);
+    });
+    // 寿命（データゴースト）
+    if (def.lifetime) {
+      this.lifeLeft -= dt;
+      if (this.lifeLeft <= 0 && this.state !== 'windup' && this.state !== 'lunge') {
+        this.setEnemyState('dead');
+        this.body.enable = false;
+        this.expired = true;
+        this.scene.tweens.add({ targets: this, alpha: 0, duration: 400, onComplete: () => this.deactivate() });
+        return;
+      }
+      if (this.lifeLeft < 2) this.setAlpha(Math.floor(this.lifeLeft * 10) % 2 ? 0.4 : 0.9);
+    }
+    // 時間の巻き戻し（リピート：一定間隔 / クロノゴーレム：攻撃のあと）
+    const tl = def.timeLoop;
+    if (tl) {
+      if (tl.afterAttack) {
+        if (this.prevState === 'recover' && this.state === 'chase') this.rewindPosition(1.5, tl.heal ?? 0);
+      } else if (this.state !== 'windup' && this.state !== 'lunge') {
+        this.loopTimer -= dt;
+        if (this.loopTimer <= 0) {
+          this.loopTimer = tl.every;
+          this.rewindPosition(tl.every, tl.heal ?? 0);
+        }
+      }
+    }
+    this.prevState = this.state;
+    // 残響の主人公：過去の装備（ほかのジョブ）へ持ち替える
+    const cyc = def.jobCycle;
+    if (cyc && this.state !== 'windup' && this.state !== 'lunge') {
+      this.cycleTimer -= dt;
+      if (this.cycleTimer <= 0) {
+        this.cycleTimer = cyc.every;
+        const jobs = Object.keys(cyc.attacks) as JobId[];
+        this.cycleIndex = (this.cycleIndex + 1) % jobs.length;
+        this.setJob(jobs[(jobs.indexOf(gameState.currentJob) + this.cycleIndex) % jobs.length]);
+      }
+    }
   }
 
   /** 背後で回る時計盤と、まわりを漂う光の粒 */

@@ -93,6 +93,9 @@ src/
 - **マップ**: `data/maps.ts` に文字列で描く（文字の意味は `data/tiles.ts`）。タイル以外の文字は目印（出現位置・NPC の位置）
 - **ストーリー**: `data/story/chapterN.ts` にイベント（きっかけ・条件・台詞・その後の動作）を書き、`data/story/index.ts` に並べる。台詞は `minLoop` / `maxLoop` で周回ごとに変えられる
 - **章を増やす**: `data/chapters.ts` の `available` を true にし、エリア・ストーリーを追加する。最終章（`next` なし）をクリアすると周回に入る
+- **最終章・最終ボス**: ZERO（第一形態）と赤・水色の FIT（第二形態）の技は `systems/ZeroAI.ts`。技の数値は `data/enemies.ts` の `opts`。ボスの `finisher`（HP 0 で必ず使う技・耐えきると撃破）、`partner`（相棒。ダメージは本体へ）、`opening`（最初の技）、エリアの `boss.then`（第二形態）、ストーリーの `spawnBoss` / `loopChoice` / `ending` で組み立てている
+- **最終章のフィールドのしかけ**: エリアの `gimmicks`（消える道路・過去の景色・過去のボスの技・浮かぶ景色のかけら）と `riftExits`（時間の裂け目）。処理は `systems/FieldGimmicks.ts` と `entities/PitManager.ts`
+- **周回（2周目以降）**: `config/balance.ts` の LOOP（敵レベル・HP/攻撃力の上乗せ・レア率・敵の数・ボスの攻撃間隔）。`minLoop` を付けると、その周回から出る装備（itemBases）・追加効果（affixes）・ボスの技（patterns）・物（objects）・台詞やイベントになる
 - **ボス**: `data/enemies.ts` で `ai: 'boss'` にし、`boss.patterns`（攻撃パターン）と `phases`（フェーズが変わる HP の割合）を書く。`data/areas.ts` の `boss` で出現位置を指定
 - **調べる物**: `data/areas.ts` の `objects` に置き、ストーリーの `touch` イベントで台詞を付ける。`loot` を付けると宝箱（1周に1回）、`hidden` はイベント（spawnObject）で出す物、`hideWhen` はフラグで消える物
 - **水**: 浅瀬タイル（`%`）と水たまりは入ると遅くなる（ダメージなし）。遅くなる割合と潮の満ち引きの周期は `config/balance.ts` の WATER、潮だまりの位置はエリアの `tideMarker` の文字

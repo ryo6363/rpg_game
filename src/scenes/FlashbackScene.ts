@@ -3,7 +3,7 @@ import { gameState } from '../core/GameState';
 import { viewport } from '../core/Viewport';
 import { JOBS } from '../data/jobs';
 import { closeOverlay } from '../ui/overlay';
-import { createText } from '../ui/text';
+import { createText, wrapJa } from '../ui/text';
 
 /**
  * 過去の映像（記憶の結晶に触れたとき）。
@@ -12,8 +12,10 @@ import { createText } from '../ui/text';
 export class FlashbackScene extends Phaser.Scene {
   private onComplete?: () => void;
   private done = false;
-  /** 映る場所（city = 沈む前の都市 / fortress = 城塞都市） */
-  private variant: 'city' | 'fortress' = 'city';
+  /** 映る場所（city = 沈む前の都市 / fortress = 城塞都市 / ruin = 崩れていく世界 / record = 過去の主人公の記録） */
+  private variant: 'city' | 'fortress' | 'ruin' | 'record' = 'city';
+  /** 映像に重ねる声（1つずつ表示。タップで次へ） */
+  private captions: string[] = [];
   /** 途中で映像が途切れる */
   private cut = false;
 
@@ -21,11 +23,12 @@ export class FlashbackScene extends Phaser.Scene {
     super('Flashback');
   }
 
-  init(data: { onComplete?: () => void; variant?: 'city' | 'fortress'; cut?: boolean }) {
+  init(data: { onComplete?: () => void; variant?: 'city' | 'fortress' | 'ruin' | 'record'; cut?: boolean; captions?: string[] }) {
     this.onComplete = data.onComplete;
     this.done = false;
     this.variant = data.variant ?? 'city';
     this.cut = !!data.cut;
+    this.captions = data.captions ?? [];
   }
 
   create() {
@@ -66,6 +69,23 @@ export class FlashbackScene extends Phaser.Scene {
         x += bw;
       }
     }
+    // 崩れていく世界：空のひび割れ
+    if (this.variant === 'ruin') {
+      g.lineStyle(1, SEPIA_DARK, 1);
+      let seed = 3;
+      for (let i = 0; i < 6; i++) {
+        seed = (seed * 9301 + 49297) % 233280;
+        let x = (seed % 100) / 100 * W;
+        let y = 0;
+        for (let k = 0; k < 6; k++) {
+          const nx = x + ((seed >> k) % 21) - 10;
+          const ny = y + horizon / 7;
+          g.lineBetween(x, y, nx, ny);
+          x = nx;
+          y = ny;
+        }
+      }
+    }
     // 道路
     g.fillStyle(SEPIA_DARK, 1).fillRect(0, horizon, W, H - horizon);
     g.fillStyle(SEPIA_LIGHT, 0.7);
@@ -77,6 +97,26 @@ export class FlashbackScene extends Phaser.Scene {
     const car = this.add.sprite(-20, horizon + 16, carKey, 0).setScale(2).setTint(0xc8a070).play(`${carKey}_move`);
     scene.add(car);
     const drive = this.tweens.add({ targets: car, x: W * 0.5, duration: 2200, ease: 'Quad.easeOut', delay: 400 });
+    if (this.variant === 'record') {
+      // 記録：止まった FIT の横に、過去の自分が立っている
+      drive.stop();
+      car.setPosition(W * 0.38, horizon + 16).anims.stop();
+      const me = this.add.image(W * 0.62, horizon + 14, 'hero_ghost', 0).setScale(2).setTint(0x8a6a45);
+      scene.add(me);
+    }
+    if (this.variant === 'ruin') {
+      // 崩れた建物のかけらが、空から落ちてくる
+      this.time.addEvent({
+        delay: 180,
+        loop: true,
+        callback: () => {
+          const b = this.add.rectangle(Math.random() * W, -6, 3 + Math.random() * 5, 3 + Math.random() * 5, SEPIA_DARK, 1);
+          scene.add(b);
+          this.tweens.add({ targets: b, y: horizon + Math.random() * 20, angle: 180, duration: 900 + Math.random() * 600, onComplete: () => b.destroy() });
+        },
+      });
+      this.time.addEvent({ delay: 900, loop: true, callback: () => cam.shake(200, 0.004) });
+    }
 
     // 古い映像のような走査線とノイズ
     const lines = this.add.graphics();
@@ -123,9 +163,35 @@ export class FlashbackScene extends Phaser.Scene {
         });
       });
       this.time.delayedCall(3800, () => this.finish());
+    } else if (this.captions.length > 0) {
+      this.playCaptions(scene);
+      return;
     } else this.time.delayedCall(3600, () => this.finish());
     // 1秒たったらタップで飛ばせる
     this.time.delayedCall(1000, () => this.input.once('pointerup', () => this.finish()));
+  }
+
+  /** 映像に重ねる声を1つずつ出す（2.4秒ごと。タップで次へ）。最後まで出たら終わる */
+  private playCaptions(scene: Phaser.GameObjects.Container) {
+    const { width: W, height: H } = viewport;
+    const band = this.add.rectangle(0, H - 64, W, 44, 0x000000, 0.55).setOrigin(0);
+    const text = createText(this, W / 2, H - 42, '', 8, '#f4f4f4', { stroke: '#1a1c2c', strokeThickness: 3, align: 'center' }).setOrigin(0.5);
+    scene.add([band, text]);
+    let index = -1;
+    let timer: Phaser.Time.TimerEvent | null = null;
+    const next = () => {
+      index++;
+      timer?.remove();
+      if (index >= this.captions.length) {
+        this.finish();
+        return;
+      }
+      text.setText(wrapJa(this.captions[index], W - 20, 8)).setAlpha(0);
+      this.tweens.add({ targets: text, alpha: 1, duration: 300 });
+      timer = this.time.delayedCall(2600, next);
+    };
+    this.time.delayedCall(900, next);
+    this.time.delayedCall(1200, () => this.input.on('pointerup', () => next()));
   }
 
   private finish() {

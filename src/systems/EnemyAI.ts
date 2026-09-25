@@ -2,9 +2,11 @@ import Phaser from 'phaser';
 import type { EnemyAiKind, EnemyAttackDef } from '../core/types';
 import { ENEMIES } from '../data/enemies';
 import type { Enemy } from '../entities/Enemy';
-import { ENEMY } from '../config/balance';
+import { ENEMY, LOOP } from '../config/balance';
+import { gameState } from '../core/GameState';
 import { Sfx } from '../ui/sfx';
 import { createText } from '../ui/text';
+import { ZERO_SPECIALS } from './ZeroAI';
 import { weightedPick } from './Items';
 import type { CombatWorld } from './CombatWorld';
 
@@ -111,7 +113,7 @@ function fireProjectiles(e: Enemy, world: CombatWorld, atk: EnemyAttackDef) {
 }
 
 /** 中心から角度 a へ伸びる、長さ len・幅 w の帯（時計の針） */
-function band(cx: number, cy: number, a: number, len: number, w: number) {
+export function band(cx: number, cy: number, a: number, len: number, w: number) {
   const nx = -Math.sin(a) * (w / 2);
   const ny = Math.cos(a) * (w / 2);
   const ex = cx + Math.cos(a) * len;
@@ -125,7 +127,7 @@ function band(cx: number, cy: number, a: number, len: number, w: number) {
 }
 
 /** 角度 a0 から a1 までの扇形（多角形） */
-function wedge(cx: number, cy: number, a0: number, a1: number, r: number) {
+export function wedge(cx: number, cy: number, a0: number, a1: number, r: number) {
   const pts = [{ x: cx, y: cy }];
   const n = Math.max(2, Math.ceil(Math.abs(a1 - a0) / 0.15));
   for (let i = 0; i <= n; i++) {
@@ -135,16 +137,177 @@ function wedge(cx: number, cy: number, a0: number, a1: number, r: number) {
   return pts;
 }
 
+/** 津波・尻尾の横薙ぎ：エリアの片側を覆う予兆のあと、帯が端から横切る */
+function sweepAt(
+  world: CombatWorld,
+  A: { x: number; y: number; r: number },
+  sw: NonNullable<EnemyAttackDef['sweep']>,
+  power: number,
+  windup: number,
+  owner?: Enemy,
+) {
+  const fromLow = Math.random() < 0.5;
+  const dir = fromLow ? 1 : -1;
+  const coverLen = A.r * 2 * sw.cover;
+  const center = sw.axis === 'y' ? A.y : A.x;
+  const edge = center - dir * A.r;
+  const mid = edge + (dir * coverLen) / 2;
+  const angle = sw.axis === 'y' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : dir > 0 ? 0 : Math.PI;
+  const cross = sw.axis === 'y' ? A.x : A.y;
+  world.spawnAoe({
+    x: sw.axis === 'y' ? cross : mid,
+    y: sw.axis === 'y' ? mid : cross,
+    angle,
+    shape: { type: 'rect', length: coverLen, width: A.r * 2 },
+    duration: windup,
+    power: 0,
+    owner,
+    noDamage: true,
+    onResolve: () =>
+      world.startSweep({
+        axis: sw.axis,
+        from: edge,
+        to: edge + dir * coverLen,
+        spanMin: cross - A.r,
+        spanMax: cross + A.r,
+        band: sw.band,
+        speed: sw.speed,
+        knockback: sw.knockback,
+        power,
+        leaveWater: sw.leaveWater,
+      }),
+  });
+}
+
+/** 回転する弾幕の本体 */
+function vortexAt(e: Enemy, world: CombatWorld, atk: EnemyAttackDef, power: number, windup: number) {
+  const v = atk.vortex!;
+  e.vortexDir *= -1;
+  const dir = e.vortexDir;
+  world.vortexEffect(e.x, e.y, dir, windup + v.duration);
+  const scene = world.gameScene;
+  let base = Math.random() * Math.PI * 2;
+  let n = 0;
+  scene.time.delayedCall(windup * 1000, () => {
+    scene.time.addEvent({
+      delay: v.interval * 1000,
+      repeat: Math.floor(v.duration / v.interval) - 1,
+      callback: () => {
+        if (!e.alive) return;
+        base += dir * 0.35;
+        for (let i = 0; i < v.spokes; i++) {
+          const a = base + (i / v.spokes) * Math.PI * 2;
+          world.spawnProjectile({
+            x: e.x,
+            y: e.y,
+            angle: a,
+            speed: v.speed,
+            distance: 260,
+            sprite: n % 2 ? 'fx_crystal_shard' : 'fx_water_orb',
+            power,
+            hitRadius: 4,
+            hostile: true,
+            curve: dir * 0.8,
+          });
+        }
+        n++;
+      },
+    });
+  });
+  e.setEnemyState('windup', windup + v.duration);
+}
+
+/**
+ * 過去のボスの幻影が現れ、そのボスの技を1つ使う（data/enemies.ts の技をそのまま使う）。
+ * 過去再演（クロノス）・ワールドエコー（ZERO）・最終章のフィールドのしかけから使う。
+ * power = 攻撃力（技の倍率を掛ける）、A = 幻影が出てよい範囲
+ */
+export function spawnBossEcho(
+  world: CombatWorld,
+  entry: { boss: string; pattern: string },
+  power: number,
+  A: { x: number; y: number; r: number },
+  owner?: Enemy,
+) {
+  const def = ENEMIES[entry.boss];
+  const pt = def?.boss?.patterns.find((x) => x.id === entry.pattern);
+  if (!def || !pt) return;
+  const scene = world.gameScene;
+  const p = world.player;
+  // プレイヤーから少し離れた場所に幻影（範囲の外には出さない）。十字斬は縦横の線がプレイヤーに重なる位置
+  const a = pt.shape.type === 'cross' ? Math.floor(Math.random() * 4) * (Math.PI / 2) : Math.random() * Math.PI * 2;
+  let gx = p.x + Math.cos(a) * 70;
+  let gy = p.y + Math.sin(a) * 70;
+  const d = Math.hypot(gx - A.x, gy - A.y);
+  if (d > A.r - 20) {
+    gx = A.x + ((gx - A.x) / d) * (A.r - 20);
+    gy = A.y + ((gy - A.y) / d) * (A.r - 20);
+  }
+  const ghost = scene.add
+    .sprite(gx, gy, def.sprite, 0)
+    .setTintFill(0xc58cff)
+    .setAlpha(0)
+    .setDepth(gy)
+    .setFlipX(p.x < gx);
+  scene.tweens.add({ targets: ghost, alpha: 0.6, duration: 250 });
+  world.showSpeech(gx, gy - ghost.height / 2 - 4, `${def.name}・${pt.name}`);
+  const w = pt.windup;
+  const pw = power * (pt.power ?? 1);
+  const ang = Math.atan2(p.y - gy, p.x - gx);
+  if (pt.sweep) {
+    sweepAt(world, A, pt.sweep, pw, w, owner);
+  } else if (pt.scatter) {
+    const sc = pt.scatter;
+    const onArena = sc.around === 'arena';
+    for (let k = 0; k < sc.count; k++) {
+      const sa = Math.random() * Math.PI * 2;
+      const sd = onArena ? Math.sqrt(Math.random()) * A.r : k === 0 ? 0 : sc.radius * (0.3 + Math.random() * 0.7);
+      world.spawnAoe({
+        x: (onArena ? A.x : p.x) + Math.cos(sa) * sd,
+        y: (onArena ? A.y : p.y) + Math.sin(sa) * sd,
+        angle: 0,
+        shape: pt.shape,
+        duration: w,
+        delay: k * sc.interval,
+        power: pw,
+        owner,
+        effect: pt.effect,
+      });
+    }
+  } else {
+    const len = pt.shape.type === 'line' ? pt.shape.length : 50;
+    world.spawnAoe({
+      x: pt.at === 'target' ? p.x : gx,
+      y: pt.at === 'target' ? p.y : gy,
+      angle: pt.shape.type === 'cross' ? 0 : ang,
+      shape: pt.shape,
+      duration: w,
+      power: pw,
+      owner,
+      effect: pt.effect,
+      // 突進する技は、幻影が予兆の線に沿って駆け抜ける
+      onResolve: pt.lunge
+        ? () => scene.tweens.add({ targets: ghost, x: gx + Math.cos(ang) * len, y: gy + Math.sin(ang) * len, duration: 160 })
+        : undefined,
+    });
+  }
+  scene.time.delayedCall((w + 0.5) * 1000, () =>
+    scene.tweens.add({ targets: ghost, alpha: 0, duration: 300, onComplete: () => ghost.destroy() }),
+  );
+}
+
 /** ボスエリアの中心と広さ */
-function arena(e: Enemy, atk: EnemyAttackDef) {
+export function arena(e: Enemy, atk: EnemyAttackDef) {
   return { x: e.homeX, y: e.homeY, r: atk.arenaRadius ?? 160 };
 }
 
 // ---------------------------------------------------------------- 特殊な攻撃
 
-type SpecialHandler = (e: Enemy, world: CombatWorld, atk: EnemyAttackDef, power: number, windup: number) => void;
+export type SpecialHandler = (e: Enemy, world: CombatWorld, atk: EnemyAttackDef, power: number, windup: number) => void;
 
-const SPECIALS: Record<NonNullable<EnemyAttackDef['special']>, SpecialHandler> = {
+// 技の名前 → 処理（最終章の技は systems/ZeroAI.ts）
+const SPECIALS: Record<string, SpecialHandler> = {
+  ...(ZERO_SPECIALS as Record<string, SpecialHandler>),
   // ---------------------------------------------------------------- 第4章 輪廻王クロノス
 
   /**
@@ -254,7 +417,7 @@ const SPECIALS: Record<NonNullable<EnemyAttackDef['special']>, SpecialHandler> =
     scene.time.delayedCall(windup * 1000, () => {
       if (fx) cam.postFX.remove(fx as unknown as Phaser.FX.Controller);
       if (!e.alive) return;
-      const amount = Math.min(e.recentDamage(rw.window) * rw.ratio, e.maxHp * rw.max);
+      const amount = rw.flat ? e.maxHp * rw.flat : Math.min(e.recentDamage(rw.window) * rw.ratio, e.maxHp * rw.max);
       const healed = e.heal(Math.max(1, amount));
       cam.flash(300, 255, 205, 117);
       Sfx.chime();
@@ -270,80 +433,11 @@ const SPECIALS: Record<NonNullable<EnemyAttackDef['special']>, SpecialHandler> =
    */
   reenact: (e, world, atk, _power, windup) => {
     const re = atk.reenact!;
-    const scene = world.gameScene;
-    const p = world.player;
     const A = arena(e, atk);
     const picks = [...re.pool].sort(() => Math.random() - 0.5).slice(0, re.count);
     picks.forEach((entry, i) => {
-      const def = ENEMIES[entry.boss];
-      const pt = def?.boss?.patterns.find((x) => x.id === entry.pattern);
-      if (!def || !pt) return;
-      scene.time.delayedCall(i * re.stagger * 1000, () => {
-        if (!e.alive) return;
-        // プレイヤーから少し離れた場所に幻影（エリアの外には出さない）。十字斬は縦横の線がプレイヤーに重なる位置
-        const a = pt.shape.type === 'cross' ? Math.floor(Math.random() * 4) * (Math.PI / 2) : Math.random() * Math.PI * 2;
-        let gx = p.x + Math.cos(a) * 70;
-        let gy = p.y + Math.sin(a) * 70;
-        const d = Math.hypot(gx - A.x, gy - A.y);
-        if (d > A.r - 20) {
-          gx = A.x + ((gx - A.x) / d) * (A.r - 20);
-          gy = A.y + ((gy - A.y) / d) * (A.r - 20);
-        }
-        const ghost = scene.add
-          .sprite(gx, gy, def.sprite, 0)
-          .setTintFill(0xc58cff)
-          .setAlpha(0)
-          .setDepth(gy)
-          .setFlipX(p.x < gx);
-        scene.tweens.add({ targets: ghost, alpha: 0.6, duration: 250 });
-        world.showSpeech(gx, gy - ghost.height / 2 - 4, `${def.name}・${pt.name}`);
-        const w = pt.windup;
-        const pw = e.atk * (pt.power ?? 1);
-        const ang = Math.atan2(p.y - gy, p.x - gx);
-        if (pt.special === 'sweep') {
-          // クロノスの今の状態を変えないように戻す
-          const st = e.state;
-          const tm = e.stateTimer;
-          SPECIALS.sweep(e, world, { ...pt, arenaRadius: atk.arenaRadius }, pw, w);
-          e.setEnemyState(st, tm);
-        } else if (pt.scatter) {
-          const sc = pt.scatter;
-          const onArena = sc.around === 'arena';
-          for (let k = 0; k < sc.count; k++) {
-            const sa = Math.random() * Math.PI * 2;
-            const sd = onArena ? Math.sqrt(Math.random()) * A.r : k === 0 ? 0 : sc.radius * (0.3 + Math.random() * 0.7);
-            world.spawnAoe({
-              x: (onArena ? A.x : p.x) + Math.cos(sa) * sd,
-              y: (onArena ? A.y : p.y) + Math.sin(sa) * sd,
-              angle: 0,
-              shape: pt.shape,
-              duration: w,
-              delay: k * sc.interval,
-              power: pw,
-              owner: e,
-              effect: pt.effect,
-            });
-          }
-        } else {
-          const len = pt.shape.type === 'line' ? pt.shape.length : 50;
-          world.spawnAoe({
-            x: pt.at === 'target' ? p.x : gx,
-            y: pt.at === 'target' ? p.y : gy,
-            angle: pt.shape.type === 'cross' ? 0 : ang,
-            shape: pt.shape,
-            duration: w,
-            power: pw,
-            owner: e,
-            effect: pt.effect,
-            // 突進する技は、幻影が予兆の線に沿って駆け抜ける
-            onResolve: pt.lunge
-              ? () => scene.tweens.add({ targets: ghost, x: gx + Math.cos(ang) * len, y: gy + Math.sin(ang) * len, duration: 160 })
-              : undefined,
-          });
-        }
-        scene.time.delayedCall((w + 0.5) * 1000, () =>
-          scene.tweens.add({ targets: ghost, alpha: 0, duration: 300, onComplete: () => ghost.destroy() }),
-        );
+      world.gameScene.time.delayedCall(i * re.stagger * 1000, () => {
+        if (e.alive) spawnBossEcho(world, entry, e.atk, A, e);
       });
     });
     e.setEnemyState('windup', windup + (picks.length - 1) * re.stagger);
@@ -546,78 +640,13 @@ const SPECIALS: Record<NonNullable<EnemyAttackDef['special']>, SpecialHandler> =
    * 当たるとダメージと、進む向きへのノックバック
    */
   sweep: (e, world, atk, power, windup) => {
-    const sw = atk.sweep!;
-    const A = arena(e, atk);
-    const fromLow = Math.random() < 0.5;
-    const dir = fromLow ? 1 : -1;
-    const coverLen = A.r * 2 * sw.cover;
-    const center = sw.axis === 'y' ? A.y : A.x;
-    const edge = center - dir * A.r;
-    const mid = edge + (dir * coverLen) / 2;
-    const angle = sw.axis === 'y' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : dir > 0 ? 0 : Math.PI;
-    const cross = sw.axis === 'y' ? A.x : A.y;
-    world.spawnAoe({
-      x: sw.axis === 'y' ? cross : mid,
-      y: sw.axis === 'y' ? mid : cross,
-      angle,
-      shape: { type: 'rect', length: coverLen, width: A.r * 2 },
-      duration: windup,
-      power: 0,
-      owner: e,
-      noDamage: true,
-      onResolve: () =>
-        world.startSweep({
-          axis: sw.axis,
-          from: edge,
-          to: edge + dir * coverLen,
-          spanMin: cross - A.r,
-          spanMax: cross + A.r,
-          band: sw.band,
-          speed: sw.speed,
-          knockback: sw.knockback,
-          power,
-          leaveWater: sw.leaveWater,
-        }),
-    });
+    sweepAt(world, arena(e, atk), atk.sweep!, power, windup, e);
     e.setEnemyState('windup', windup);
   },
 
   /** 回転する弾幕：渦の予兆のあと、弾が渦を巻きながら広がる。回る向きは毎回反対 */
   vortex: (e, world, atk, power, windup) => {
-    const v = atk.vortex!;
-    e.vortexDir *= -1;
-    const dir = e.vortexDir;
-    world.vortexEffect(e.x, e.y, dir, windup + v.duration);
-    const scene = world.gameScene;
-    let base = Math.random() * Math.PI * 2;
-    let n = 0;
-    scene.time.delayedCall(windup * 1000, () => {
-      scene.time.addEvent({
-        delay: v.interval * 1000,
-        repeat: Math.floor(v.duration / v.interval) - 1,
-        callback: () => {
-          if (!e.alive) return;
-          base += dir * 0.35;
-          for (let i = 0; i < v.spokes; i++) {
-            const a = base + (i / v.spokes) * Math.PI * 2;
-            world.spawnProjectile({
-              x: e.x,
-              y: e.y,
-              angle: a,
-              speed: v.speed,
-              distance: 260,
-              sprite: n % 2 ? 'fx_crystal_shard' : 'fx_water_orb',
-              power,
-              hitRadius: 4,
-              hostile: true,
-              curve: dir * 0.8,
-            });
-          }
-          n++;
-        },
-      });
-    });
-    e.setEnemyState('windup', windup + v.duration);
+    vortexAt(e, world, atk, power, windup);
   },
 
   /**
@@ -898,10 +927,15 @@ const melee: AiHandler = (e, dt, world) => {
         e.attackCooldown = ENEMY.attackCooldown * (1 + Math.random() * 0.5);
         const alt = def.altAttack;
         e.attackCount++;
-        beginAttack(e, world, alt && e.attackCount % alt.every === 0 ? alt.attack : def.attack);
+        beginAttack(e, world, alt && e.attackCount % alt.every === 0 ? alt.attack : (e.attackOverride ?? def.attack));
       } else if (dist <= def.attackRange + p.radius + e.radius) {
         // 次の攻撃まで待つあいだは、近づきすぎずに様子を見る
         e.body.setVelocity(0, 0);
+      } else if (def.mimic) {
+        // エコー：プレイヤーの動きをまねる（少しだけ近づく）
+        const pv = p.body.velocity;
+        const ang = Math.atan2(p.y - e.y, p.x - e.x);
+        e.body.setVelocity(pv.x * 0.8 + Math.cos(ang) * 12, pv.y * 0.8 + Math.sin(ang) * 12);
       } else if (def.moveSpeed > 0) moveToward(e, p.x, p.y, def.moveSpeed);
       else e.body.setVelocity(0, 0);
       break;
@@ -935,12 +969,18 @@ const boss: AiHandler = (e, dt, world) => {
 
   if (e.attackCooldown <= 0) {
     const usable = b.patterns.filter(
-      (pt) => dist <= pt.range + p.radius + e.radius && e.phase >= (pt.minPhase ?? 1) && e.phase <= (pt.maxPhase ?? 99),
+      (pt) =>
+        dist <= pt.range + p.radius + e.radius &&
+        e.phase >= (pt.minPhase ?? 1) &&
+        e.phase <= (pt.maxPhase ?? 99) &&
+        gameState.story.loop >= (pt.minLoop ?? 1) &&
+        (pt.maxUses === undefined || (e.uses.get(pt.id) ?? 0) < pt.maxUses),
     );
     const pattern = weightedPick(usable, (pt) => pt.weight);
     if (pattern) {
       beginAttack(e, world, pattern);
-      e.attackCooldown = b.interval * (b.intervalByPhase?.[e.phase - 1] ?? 1);
+      e.uses.set(pattern.id, (e.uses.get(pattern.id) ?? 0) + 1);
+      e.attackCooldown = b.interval * (b.intervalByPhase?.[e.phase - 1] ?? 1) * loopIntervalMul();
       return;
     }
   }
@@ -949,7 +989,32 @@ const boss: AiHandler = (e, dt, world) => {
   else e.body.setVelocity(0, 0);
 };
 
+/** 周回ごとにボスの攻撃間隔が縮む */
+function loopIntervalMul(): number {
+  return Math.max(LOOP.bossIntervalMin, 1 - (gameState.story.loop - 1) * LOOP.bossIntervalPerLoop);
+}
+
+/**
+ * ボスの相棒（水色の FIT）：自分では攻撃しない。ボスの技で動かされていないときは、
+ * ボスとはプレイヤーをはさんで反対側に回り込む
+ */
+const partner: AiHandler = (e, _dt, world) => {
+  const main = e.link;
+  if (!main || !main.alive) {
+    e.body.setVelocity(0, 0);
+    return;
+  }
+  if (e.controlled) return;
+  const p = world.player;
+  const ang = Math.atan2(p.y - main.y, p.x - main.x);
+  const tx = p.x + Math.cos(ang) * 60;
+  const ty = p.y + Math.sin(ang) * 60;
+  if (Math.hypot(tx - e.x, ty - e.y) > 6) moveToward(e, tx, ty, e.def.moveSpeed);
+  else e.body.setVelocity(0, 0);
+};
+
 export const ENEMY_AI: Record<EnemyAiKind, AiHandler> = {
   melee,
   boss,
+  partner,
 };

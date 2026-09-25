@@ -12,6 +12,13 @@ export class TitleScene extends Phaser.Scene {
     super('Title');
   }
 
+  /** エンディングのあと（NEW LOOP を大きく出す） */
+  private newLoop = false;
+
+  init(data: { newLoop?: boolean }) {
+    this.newLoop = !!data?.newLoop;
+  }
+
   create() {
     const layout = () => {
       this.children.removeAll(true);
@@ -23,7 +30,12 @@ export class TitleScene extends Phaser.Scene {
       createText(this, cx, cy - 46, 'フィットクエスト', 8, '#f4f4f4').setOrigin(0.5);
       createText(this, cx, cy - 30, `〜 第${ch.id}章 ${ch.title} 〜`, 8, '#94b0c2').setOrigin(0.5);
       if (gameState.story.loop > 1) {
-        createText(this, cx, cy - 18, `${gameState.story.loop}周目`, 6, '#ffd23f').setOrigin(0.5);
+        // 世界のループを終わらせたあとの、新しい周回
+        const nl = createText(this, cx, cy - 16, `NEW LOOP ・ ${gameState.story.loop}周目`, this.newLoop ? 8 : 6, '#ffd23f').setOrigin(0.5);
+        if (this.newLoop) {
+          nl.setAlpha(0).setScale(1.6);
+          this.tweens.add({ targets: nl, alpha: 1, scale: 1, duration: 1200, ease: 'Quad.easeOut' });
+        }
       }
       const car = JOBS[gameState.currentJob].sprite;
       this.add.sprite(cx, cy + 4, car, 0).play(`${car}_move`);

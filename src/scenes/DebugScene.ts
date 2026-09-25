@@ -11,10 +11,15 @@ import { createText } from '../ui/text';
 
 /**
  * 隠しデバッグメニュー（タイトル画面のロゴを3秒以内に5回タップ／キーボードで DEBUG）。
- * 各エリア・ボスステージへ直接飛べる。
+ * 各エリア・ボスステージへ直接飛べる。画面に収まらないときは上下にドラッグ（PC はホイール）でスクロール
  */
 export class DebugScene extends Phaser.Scene {
   private root!: Phaser.GameObjects.Container;
+  /** スクロールできる量（0 なら全部画面に収まっている） */
+  private maxScroll = 0;
+  private scrollBar!: Phaser.GameObjects.Graphics;
+  /** ドラッグ中の状態。少しでも動かしたらボタンのタップにしない */
+  private drag = { active: false, startY: 0, startScroll: 0, moved: false };
 
   constructor() {
     super('Debug');
@@ -23,15 +28,52 @@ export class DebugScene extends Phaser.Scene {
   create() {
     this.cameras.main.setZoom(viewport.zoom).setOrigin(0, 0).setBackgroundColor('#1a1c2c');
     this.root = this.add.container(0, 0);
+    this.scrollBar = this.add.graphics().setScrollFactor(0).setDepth(10);
     this.refresh();
     this.input.keyboard?.on('keydown-ESC', () => this.scene.start('Title'));
+
+    // ---- スクロール（ドラッグ・ホイール）
+    const zoom = this.cameras.main.zoom;
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      this.drag = { active: true, startY: p.y / zoom, startScroll: this.cameras.main.scrollY, moved: false };
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (!this.drag.active || !p.isDown) return;
+      const dy = p.y / zoom - this.drag.startY;
+      if (Math.abs(dy) > 4) this.drag.moved = true;
+      if (this.drag.moved) this.scrollTo(this.drag.startScroll - dy);
+    });
+    this.input.on('pointerup', () => (this.drag.active = false));
+    this.input.on('wheel', (_p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
+      this.scrollTo(this.cameras.main.scrollY + dy / zoom);
+    });
+  }
+
+  private scrollTo(y: number) {
+    this.cameras.main.scrollY = Phaser.Math.Clamp(y, 0, this.maxScroll);
+    this.drawScrollBar();
+  }
+
+  /** 右端のスクロールバー（スクロールできるときだけ） */
+  private drawScrollBar() {
+    const g = this.scrollBar;
+    g.clear();
+    if (this.maxScroll <= 0) return;
+    const { width: W, height: H, safe } = viewport;
+    const top = safe.top + 2;
+    const trackH = H - safe.top - safe.bottom - 4;
+    const barH = Math.max(16, (trackH * H) / (H + this.maxScroll));
+    const barY = top + ((trackH - barH) * this.cameras.main.scrollY) / this.maxScroll;
+    const x = W - safe.right - 3;
+    g.fillStyle(0x566c86, 0.4).fillRect(x, top, 2, trackH);
+    g.fillStyle(0xf4f4f4, 0.8).fillRect(x, barY, 2, barH);
   }
 
   private refresh() {
     this.root.removeAll(true);
-    const { width: W, safe } = viewport;
+    const { width: W, height: H, safe } = viewport;
     const left = safe.left + 6;
-    const right = W - safe.right - 6;
+    const right = W - safe.right - 8;
     let y = safe.top + 4;
 
     this.put(createText(this, left, y, 'DEBUG MENU', 8, '#ef7d57'));
@@ -84,6 +126,10 @@ export class DebugScene extends Phaser.Scene {
       }
       y += 3;
     }
+
+    // 一番下まで見えるよう、スクロールできる量を決める（切り替え後も位置は保つ）
+    this.maxScroll = Math.max(0, y + safe.bottom + 6 - H);
+    this.scrollTo(this.cameras.main.scrollY);
   }
 
   /** エリアへ飛ぶ。ボスステージならボスをもう一度出す */
@@ -108,7 +154,11 @@ export class DebugScene extends Phaser.Scene {
     this.put(g);
     this.put(createText(this, x + w / 2, y + h / 2, label, 6, '#f4f4f4').setOrigin(0.5));
     const z = this.add.zone(x, y, w, h).setOrigin(0).setInteractive();
-    z.on('pointerup', () => this.time.delayedCall(0, onTap));
+    z.on('pointerup', () => {
+      // スクロールのためのドラッグだったときは押したことにしない
+      if (this.drag.moved) return;
+      this.time.delayedCall(0, onTap);
+    });
     this.put(z);
   }
 }
