@@ -107,6 +107,8 @@ export interface JobDef {
   growth: Partial<Stats>;
   basicAttack: string;
   skills: { id: string; unlockLevel: number }[];
+  /** ジョブの得意分野：ステータスの Lv にはじめから加わる（戦士：防御力 +10 など） */
+  statBonus: Partial<StatAllocation>;
 }
 
 /**

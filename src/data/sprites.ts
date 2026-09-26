@@ -1463,6 +1463,29 @@ const orb = (key: string, core: string, mid: string, outer: string): PixelSprite
 
 EFFECT_SPRITES.push(orb('fx_orb_red', 'w', 'o', 'r'), orb('fx_orb_cyan', 'w', 'a', 'c'));
 
+// 回復アイテム「ガソリン」の缶（白で描き、レアリティの色を乗せる）
+EFFECT_SPRITES.push({
+  key: 'gas_can',
+  width: 10,
+  height: 12,
+  frames: [
+    [
+      '...kkk....',
+      '..kwwwk...',
+      '.kkkkkkkk.',
+      '.kwwwwwwk.',
+      '.kwkwwkwk.',
+      '.kwwkkwwk.',
+      '.kwwkkwwk.',
+      '.kwkwwkwk.',
+      '.kwwwwwwk.',
+      '.ksssssssk',
+      '.kkkkkkkk.',
+      '..........',
+    ].map((r) => r.padEnd(10, '.').slice(0, 10)),
+  ],
+});
+
 // 前の周回のタイヤの跡（はじまりの森・2周目〜）
 CHARACTER_SPRITES.push({
   key: 'tire_tracks',

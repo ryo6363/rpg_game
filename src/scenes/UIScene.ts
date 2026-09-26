@@ -21,6 +21,8 @@ export class UIScene extends Phaser.Scene {
   private stick!: VirtualStick;
   private buttons!: ActionButtons;
   private attackIndex = 0;
+  private gasIndex = 0;
+  private gasCountText!: Phaser.GameObjects.Text;
   private skillIndices: number[] = [];
   private hpBar!: Phaser.GameObjects.Graphics;
   private hpText!: Phaser.GameObjects.Text;
@@ -84,7 +86,7 @@ export class UIScene extends Phaser.Scene {
     this.pointBadge.add(this.pointBadgeText);
     this.shownPoints = -1;
     // ボス戦の技の名前と重ならない高さ
-    this.toastY = hudY + 64;
+    this.toastY = hudY + 71;
 
     // ボスの HP バー（ボス戦のときだけ）
     this.bossName = createText(this, hudX, hudY + 29, '', 6, '#ffd23f', { stroke: '#1a1c2c', strokeThickness: 2 });
@@ -92,7 +94,7 @@ export class UIScene extends Phaser.Scene {
     this.bossBarWidth = W - safe.left - safe.right - 12;
     // 技の名前：HP バーのすぐ下、中央に帯つきで
     this.bossAttackBand = this.add.graphics().setVisible(false);
-    this.bossAttack = createText(this, hudX + this.bossBarWidth / 2, hudY + 51, '', 8, '#ffffff', { stroke: '#1a1c2c', strokeThickness: 3 })
+    this.bossAttack = createText(this, hudX + this.bossBarWidth / 2, hudY + 58, '', 8, '#ffffff', { stroke: '#1a1c2c', strokeThickness: 3 })
       .setOrigin(0.5)
       .setVisible(false);
     this.shownAttack = null;
@@ -115,6 +117,9 @@ export class UIScene extends Phaser.Scene {
     this.skillIndices = offsets.map(([dx, dy], i) =>
       this.buttons.add(ax + dx, ay + dy, CONTROLS.skillButtonRadius, `${i + 1}`, 0x3b5dc9, true),
     );
+    // 給油ボタン（攻撃ボタンの左下。持っている数を右上に）
+    this.gasIndex = this.buttons.add(ax - 56, ay + 10, CONTROLS.skillButtonRadius, '給油', 0x38b764);
+    this.gasCountText = createText(this, ax - 56 + 8, ay + 10 - 9, '', 6, '#f4f4f4', { stroke: '#1a1c2c', strokeThickness: 2 }).setOrigin(0.5);
 
     // ---- タッチ（マルチタッチ対応：ポインタ id ごとに管理）
     const toLogical = (p: Phaser.Input.Pointer) => ({ x: p.x / viewport.zoom, y: p.y / viewport.zoom });
@@ -135,6 +140,7 @@ export class UIScene extends Phaser.Scene {
         this.buttons.press(p.id, hit);
         const si = this.skillIndices.indexOf(hit);
         if (si >= 0 && !this.buttons.buttons[hit].locked) InputState.skillQueue.push(si);
+        if (hit === this.gasIndex && !this.buttons.buttons[hit].locked) EventBus.emit(GameEvents.UseGas);
         return;
       }
       this.stick.tryGrab(p.id, x, y);
@@ -156,12 +162,13 @@ export class UIScene extends Phaser.Scene {
 
     // ---- キーボード（PC確認用）
     const kb = this.input.keyboard!;
-    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,SPACE,ONE,TWO,THREE,I,C') as Record<
+    this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,J,SPACE,ONE,TWO,THREE,I,C,H') as Record<
       string,
       Phaser.Input.Keyboard.Key
     >;
     this.keys.I.on('down', () => this.openInventory());
     this.keys.C.on('down', () => openOverlay(this, 'Status'));
+    this.keys.H.on('down', () => EventBus.emit(GameEvents.UseGas));
     (['ONE', 'TWO', 'THREE'] as const).forEach((k, i) =>
       this.keys[k].on('down', () => {
         if (!this.buttons.buttons[this.skillIndices[i]].locked) InputState.skillQueue.push(i);
@@ -230,6 +237,10 @@ export class UIScene extends Phaser.Scene {
       const label = !s ? '' : s.unlocked ? s.short : `Lv${s.unlockLevel}`;
       this.buttons.setLabel(bi, label);
     });
+    const gas = this.buttons.buttons[this.gasIndex];
+    gas.locked = HudState.gas.count <= 0;
+    gas.cooldown = HudState.gas.cooldown;
+    this.gasCountText.setText(`${HudState.gas.count}`);
     const atk = this.buttons.buttons[this.attackIndex];
     atk.locked = !HudState.attackEnabled;
     this.buttons.setLabel(this.attackIndex, HudState.interactLabel ?? '攻撃');
@@ -292,6 +303,17 @@ export class UIScene extends Phaser.Scene {
       .fillRect(0, 0, Math.round(w * ratio), 4)
       .fillStyle(0xef7d57, 1)
       .fillRect(0, 0, Math.round(w * ratio), 1);
+    // 詠唱バー：ボスが技を溜めている間だけ。満ちたら発動（最後は赤く点滅）
+    if (b.cast !== null) {
+      const cy = 8;
+      const ch = 3;
+      const fill = Math.round(w * b.cast);
+      const late = b.cast > 0.8 && Math.floor(this.time.now / 80) % 2 === 0;
+      this.bossBar.fillStyle(0x1a1c2c, 0.85).fillRect(-1, cy - 1, w + 2, ch + 2);
+      this.bossBar.fillStyle(0x333c57, 1).fillRect(0, cy, w, ch);
+      this.bossBar.fillStyle(late ? 0xb13e53 : 0xffd23f, 1).fillRect(0, cy, fill, ch);
+      this.bossBar.fillStyle(0xffffff, 1).fillRect(Math.max(0, fill - 1), cy, 1, ch);
+    }
     // 50%・20% の目印（上下にはみ出す白い線と、小さな三角）
     for (const mark of [0.5, 0.2]) {
       const mx = Math.round(w * mark);

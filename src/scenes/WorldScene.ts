@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
-import { PLAYER, WATER } from '../config/balance';
+import { GAS, PLAYER, WATER } from '../config/balance';
+import { GAS_META, GAS_ORDER } from '../data/gas';
+import { loseExpOnDeath } from '../systems/Progression';
 import { DebugState } from '../core/DebugState';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
@@ -136,7 +138,9 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
       this.emitHp();
       this.showBlast(this.player.x, this.player.y, 16, 0xffffff);
     };
+    const onUseGas = () => this.useGas();
     const handlers: [string, (...args: any[]) => void][] = [
+      [GameEvents.UseGas, onUseGas],
       [GameEvents.ViewportChanged, onViewport],
       [GameEvents.EquipmentChanged, onEquip],
       [GameEvents.StatsChanged, onEquip],
@@ -283,7 +287,13 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
       onDone?.();
       return;
     }
-    openOverlay(this, 'Dialog', { lines: filtered, onComplete: onDone });
+    // ボス戦中は、画面のタップや攻撃キーでは送らず、専用の「次へ」ボタンだけで送る
+    openOverlay(this, 'Dialog', { lines: filtered, onComplete: onDone, guarded: this.inBossFight });
+  }
+
+  /** ボス戦中か（フィールドで上書き） */
+  protected get inBossFight(): boolean {
+    return false;
   }
 
   private runThen(ev: StoryEventDef, next: () => void) {
@@ -454,8 +464,45 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     if (addToInventory(item)) EventBus.emit(GameEvents.ItemPickedUp, item);
   }
 
+  // ------------------------------------------------------------ 回復（ガソリン）
+
+  private gasCooldown = 0;
+
+  /**
+   * ガソリンを使う。足りない HP をちょうど満たせる、いちばん安いものを選ぶ
+   * （どれでも満たせないときは、持っている中でいちばん良いもの）
+   */
+  useGas() {
+    const p = this.player;
+    if (p.dead || this.gasCooldown > 0) return;
+    const missing = p.stats.maxHp - p.hp;
+    if (missing <= 0) {
+      EventBus.emit(GameEvents.Toast, 'HP は満タンです', '#94b0c2');
+      return;
+    }
+    const owned = GAS_ORDER.filter((r) => gameState.gas[r] > 0);
+    if (owned.length === 0) {
+      EventBus.emit(GameEvents.Toast, 'ガソリンを持っていない', '#94b0c2');
+      return;
+    }
+    const pick = owned.find((r) => p.stats.maxHp * GAS.heal[r] >= missing) ?? owned[owned.length - 1];
+    gameState.gas[pick]--;
+    const amount = Math.min(missing, Math.round(p.stats.maxHp * GAS.heal[pick]));
+    p.hp += amount;
+    this.gasCooldown = GAS.cooldown;
+    this.floatText.show(p.x, p.y - 12, `+${amount}`, '#a7f070', true);
+    this.sparks.explode(10, p.x, p.y);
+    Sfx.chime();
+    EventBus.emit(GameEvents.Toast, `${GAS_META[pick].name}で給油！ HP +${amount}`, '#a7f070');
+    this.emitHp();
+    SaveManager.requestSave();
+  }
+
   /** 各シーンの update から呼ぶ */
   protected updateWorld(dt: number) {
+    this.gasCooldown -= dt;
+    HudState.gas.count = GAS_ORDER.reduce((sum, r) => sum + gameState.gas[r], 0);
+    HudState.gas.cooldown = Math.max(0, this.gasCooldown / GAS.cooldown);
     HudState.attackEnabled = this.player.canAttack;
     HudState.skillsEnabled = this.player.canAttack;
     HudState.interactLabel = null;
@@ -831,6 +878,8 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
     if (p.dead) return;
     this.tweens.add({ targets: p, scale: 0.2, alpha: 0.3, duration: 250 });
     this.time.delayedCall(260, () => {
+      // 縮む動きを止めてから元の大きさに戻す（戻したあとに縮みきらないように）
+      this.tweens.killTweensOf(p);
       p.setScale(1).setAlpha(1);
       if (DebugState.invincible) {
         p.body.reset(this.lastSafe.x, this.lastSafe.y);
@@ -910,6 +959,12 @@ export abstract class WorldScene extends Phaser.Scene implements CombatWorld {
 
   protected onPlayerDied() {
     EventBus.emit(GameEvents.PlayerDied);
+    // やられると経験値が減る（レベルは下がらない）
+    const lost = loseExpOnDeath();
+    if (lost > 0) {
+      this.floatText.show(this.player.x, this.player.y - 14, `EXP -${lost}`, '#b13e53', true);
+      EventBus.emit(GameEvents.Toast, `やられてしまった……（経験値 -${lost}）`, '#b13e53');
+    }
     this.tweens.add({ targets: this.player, alpha: 0.2, angle: 90, duration: 400 });
     this.time.delayedCall(PLAYER.respawnTime * 1000, () => {
       this.player.revive(this.startPos.x, this.startPos.y);

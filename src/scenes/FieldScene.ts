@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BOSS, ENEMY, LOOT } from '../config/balance';
+import { BOSS, ENEMY, GAS, LOOT } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { HudState } from '../core/HudState';
 import type { BossPatternDef, ItemInstance, Rarity } from '../core/types';
@@ -7,13 +7,17 @@ import { ENEMIES } from '../data/enemies';
 import { ITEM_BASES } from '../data/itemBases';
 import { Enemy } from '../entities/Enemy';
 import { LootDrop } from '../entities/LootDrop';
+import { GasDrop } from '../entities/GasDrop';
+import { GAS_META } from '../data/gas';
+import { gameState } from '../core/GameState';
+import { SaveManager } from '../core/SaveManager';
 import { rollDamage } from '../systems/Combat';
 import { addToInventory } from '../systems/Equipment';
 import { createItem, weightedPick } from '../systems/Items';
-import { createRandomItem, rollDrop } from '../systems/LootGenerator';
+import { createRandomItem, rollDrop, rollRarity } from '../systems/LootGenerator';
 import { gainExp, killExp } from '../systems/Progression';
 import { enemyCountMultiplier, enemyLevel, hasFlag, rarityBonus, setFlag } from '../systems/Story';
-import { RAINBOW } from '../ui/rarityStyle';
+import { RAINBOW, rarityTextColor } from '../ui/rarityStyle';
 import { WorldScene, type WorldData } from './WorldScene';
 
 /** フィールド／ボスエリア。data/areas.ts の定義から構築する */
@@ -23,6 +27,7 @@ export class FieldScene extends WorldScene {
   private enemyGroup!: Phaser.Physics.Arcade.Group;
   private respawnTimers: number[] = [];
   private drops: LootDrop[] = [];
+  private gasDrops: GasDrop[] = [];
   private fullWarnAt = 0;
   private hpBars!: Phaser.GameObjects.Graphics;
   private boss: Enemy | null = null;
@@ -37,6 +42,7 @@ export class FieldScene extends WorldScene {
     this.liveEnemies = [];
     this.respawnTimers = [];
     this.drops = [];
+    this.gasDrops = [];
     this.boss = null;
   }
 
@@ -107,6 +113,11 @@ export class FieldScene extends WorldScene {
     e.partner?.body.reset(e.x, e.y);
     e.setAlpha(0);
     this.tweens.add({ targets: [e, e.partner].filter(Boolean), alpha: 1, duration: 500 });
+  }
+
+  /** ボス戦中か（会話を攻撃ボタンの連打で飛ばさないようにする） */
+  protected get inBossFight(): boolean {
+    return !!this.boss?.alive;
   }
 
   /** ZERO END を耐えきったとき：ボスを倒す */
@@ -209,6 +220,10 @@ export class FieldScene extends WorldScene {
         rarityBonus: rarityBonus(),
       });
       if (item) this.spawnDrop(item, enemy.x, enemy.y);
+      // 回復アイテム（ガソリン）
+      if (Math.random() < GAS.dropChance * (enemy.def.dropRate ?? 1)) {
+        this.gasDrops.push(new GasDrop(this, rollRarity(rarityBonus()), enemy.x, enemy.y));
+      }
       // 低確率の特別なドロップ（輪廻の欠片など）
       const rd = enemy.def.rareDrop;
       if (rd && Math.random() < rd.chance) this.spawnDrop(createItem(rd.baseId, rd.rarity, enemy.level), enemy.x, enemy.y);
@@ -270,6 +285,11 @@ export class FieldScene extends WorldScene {
         );
         if (item) this.spawnDrop(item, boss.x, boss.y);
       }
+      // ボスはガソリンも落とす（ハイオク以上）
+      for (let i = 0; i < GAS.bossDrop; i++) {
+        const r = rollRarity(rarityBonus());
+        this.gasDrops.push(new GasDrop(this, r === 'normal' ? 'magic' : r, boss.x, boss.y));
+      }
       this.boss = null;
       this.playStory({ type: 'bossDefeated', boss: def.id });
     });
@@ -289,6 +309,8 @@ export class FieldScene extends WorldScene {
   protected dropLootAt(x: number, y: number, minRarity: Rarity) {
     const item = createRandomItem({ itemLevel: enemyLevel(this.area.level), jobId: this.player.jobId, rarityBonus: rarityBonus() }, minRarity);
     if (item) this.spawnDrop(item, x, y);
+    // 宝箱にはガソリンも
+    this.gasDrops.push(new GasDrop(this, minRarity === 'normal' ? 'magic' : minRarity, x, y));
     EventBus.emit(GameEvents.Toast, '宝箱を開けた！', '#ffd23f');
   }
 
@@ -324,6 +346,23 @@ export class FieldScene extends WorldScene {
   private updatePickup() {
     const p = this.player;
     if (p.dead) return;
+    // ガソリン（持ち物の枠は使わない。1種類 GAS.maxStack 個まで）
+    for (let i = this.gasDrops.length - 1; i >= 0; i--) {
+      const d = this.gasDrops[i];
+      if (!d.ready || Math.hypot(d.x - p.x, d.y - p.y) > LOOT.pickupRange) continue;
+      if (gameState.gas[d.rarity] >= GAS.maxStack) {
+        if (this.time.now > this.fullWarnAt) {
+          EventBus.emit(GameEvents.Toast, `${GAS_META[d.rarity].name}はこれ以上持てない`, '#b13e53');
+          this.fullWarnAt = this.time.now + 2500;
+        }
+        continue;
+      }
+      gameState.gas[d.rarity]++;
+      d.collect(p.x, p.y);
+      this.gasDrops.splice(i, 1);
+      EventBus.emit(GameEvents.Toast, `${GAS_META[d.rarity].name} を手に入れた（${gameState.gas[d.rarity]}）`, rarityTextColor(d.rarity));
+      SaveManager.requestSave();
+    }
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
       if (!d.ready || Math.hypot(d.x - p.x, d.y - p.y) > LOOT.pickupRange) continue;
@@ -378,7 +417,9 @@ export class FieldScene extends WorldScene {
     this.drawHpBars();
     const b = this.boss;
     const using = b && (b.state === 'windup' || b.state === 'lunge') ? (b.currentAttack as BossPatternDef | undefined)?.name ?? null : null;
-    HudState.boss = b && b.alive ? { name: b.def.name, hp: b.hp, maxHp: b.maxHp, attack: using } : null;
+    // 詠唱バー：溜めの進み具合（0 → 1 で発動）
+    const cast = b && b.state === 'windup' ? Phaser.Math.Clamp(1 - b.stateTimer / b.windupTotal, 0, 1) : null;
+    HudState.boss = b && b.alive ? { name: b.def.name, hp: b.hp, maxHp: b.maxHp, attack: using, cast } : null;
   }
 
   private drawHpBars() {

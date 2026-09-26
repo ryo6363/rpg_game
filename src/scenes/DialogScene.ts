@@ -9,6 +9,11 @@ export interface DialogData {
   lines: DialogLine[];
   /** 会話を閉じたあとに呼ばれる（フィールド／町は再開済み） */
   onComplete?: () => void;
+  /**
+   * ボス戦中：攻撃ボタンの連打で読み飛ばさないよう、画面のタップ・J・Space では送らない。
+   * 攻撃ボタンから離れた「次へ」ボタン（と Enter キー）だけで送る
+   */
+  guarded?: boolean;
 }
 
 const FONT = 8;
@@ -27,6 +32,7 @@ export class DialogScene extends Phaser.Scene {
   private textWidth = 0;
   /** 開いた直後のタップ（話しかけたときの指）を無視する */
   private readyAt = 0;
+  private guarded = false;
 
   constructor() {
     super('Dialog');
@@ -36,6 +42,7 @@ export class DialogScene extends Phaser.Scene {
     this.lines = data.lines;
     this.onComplete = data.onComplete;
     this.index = 0;
+    this.guarded = !!data.guarded;
   }
 
   create() {
@@ -60,11 +67,26 @@ export class DialogScene extends Phaser.Scene {
     this.cursor = createText(this, x + w - 8, y + boxH - 5, '▼', 6, '#f4f4f4').setOrigin(1, 1);
     this.tweens.add({ targets: this.cursor, alpha: 0.2, duration: 400, yoyo: true, repeat: -1 });
 
-    this.input.on('pointerup', () => this.advance());
     const kb = this.input.keyboard!;
-    ['keydown-J', 'keydown-SPACE', 'keydown-ENTER'].forEach((ev) => kb.on(ev, () => this.advance()));
+    if (this.guarded) {
+      // 「次へ」ボタン：会話ウィンドウの上・中央（右下の攻撃ボタンから離す）
+      const bw = 64;
+      const bh = 16;
+      const bx = (W - bw) / 2;
+      const by = y - bh - 16;
+      const bg = this.add.graphics();
+      bg.fillStyle(0x257179, 1).fillRect(bx, by, bw, bh);
+      bg.lineStyle(1, 0xf4f4f4, 0.9).strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      createText(this, bx + bw / 2, by + bh / 2, '次へ ▶', 8, '#f4f4f4').setOrigin(0.5);
+      const zone = this.add.zone(bx, by, bw, bh).setOrigin(0).setInteractive();
+      zone.on('pointerup', () => this.advance());
+      kb.on('keydown-ENTER', () => this.advance());
+    } else {
+      this.input.on('pointerup', () => this.advance());
+      ['keydown-J', 'keydown-SPACE', 'keydown-ENTER'].forEach((ev) => kb.on(ev, () => this.advance()));
+    }
 
-    this.readyAt = this.time.now + 250;
+    this.readyAt = this.time.now + (this.guarded ? 500 : 250);
     this.showLine();
   }
 

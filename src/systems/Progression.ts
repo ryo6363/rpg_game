@@ -1,4 +1,4 @@
-import { EXP } from '../config/balance';
+import { DEATH, EXP } from '../config/balance';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { SaveManager } from '../core/SaveManager';
@@ -30,6 +30,17 @@ export function gainExp(amount: number): number {
     SaveManager.requestSave();
   }
   return ups;
+}
+
+/** やられたとき：次のレベルまでに必要な経験値の一部を失う（レベルは下がらない）。失った量を返す */
+export function loseExpOnDeath(): number {
+  const job = gameState.jobs[gameState.currentJob];
+  if (job.level >= EXP.maxLevel) return 0;
+  const lost = Math.min(job.exp, Math.round(expToNext(job.level) * DEATH.expLossRatio));
+  job.exp -= lost;
+  EventBus.emit(GameEvents.ExpChanged);
+  SaveManager.requestSave();
+  return lost;
 }
 
 /** 敵を倒したときの経験値 */

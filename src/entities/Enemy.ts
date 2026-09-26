@@ -259,9 +259,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     return Math.round(this.hp - before);
   }
 
+  /** 溜め（windup）の長さ。詠唱バーの進み具合に使う */
+  windupTotal = 1;
+
   setEnemyState(state: EnemyState, timer = 0) {
     this.state = state;
     this.stateTimer = timer;
+    if (state === 'windup') this.windupTotal = Math.max(0.01, timer);
   }
 
   /**

@@ -7,6 +7,7 @@ import { viewport } from '../core/Viewport';
 import { ITEM_BASES } from '../data/itemBases';
 import { RARITY_META, SLOT_META, SLOT_ORDER, STAT_META, STAT_ORDER } from '../data/itemMeta';
 import { JOBS } from '../data/jobs';
+import { GAS_META, GAS_ORDER } from '../data/gas';
 import {
   autoEquipBest,
   bulkSellPreview,
@@ -116,7 +117,9 @@ export class InventoryScene extends Phaser.Scene {
     const statLine = (keys: StatKey[]) => keys.map((k) => `${STAT_META[k].short}${formatStat(k, s[k])}`).join('  ');
     this.text(left, y, statLine(['maxHp', 'atk', 'def', 'moveSpeed']), 6);
     this.text(left, y + 8, statLine(['critRate', 'critDamage', 'attackSpeed']), 6);
-    y += 18;
+    // ガソリン（回復アイテム）の数
+    this.text(left, y + 16, 'ガソリン  ' + GAS_ORDER.map((r) => `${GAS_META[r].short}${gameState.gas[r]}`).join('  '), 6, '#a7f070');
+    y += 26;
 
     // ---- 操作ボタン（持ち物の上に1列）
     const bagW = BAG_COLS * CELL + (BAG_COLS - 1) * GAP;

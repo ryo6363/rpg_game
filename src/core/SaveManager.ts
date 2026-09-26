@@ -6,7 +6,7 @@ import type { JobId, PlayerStatPoints } from './types';
 // MIGRATIONS に「旧バージョン → 次のバージョン」の変換を追加する。
 
 const STORAGE_KEY = 'fitquest_save';
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 interface SaveFile {
   version: number;
@@ -29,6 +29,8 @@ const MIGRATIONS: Record<number, (data: any) => any> = {
     }
     return { ...d, playerStats };
   },
+  // v3 → v4: 回復アイテム「ガソリン」を追加（レギュラーを2つ持たせる）
+  3: (d) => ({ ...d, gas: { normal: 2, magic: 0, rare: 0, legendary: 0 } }),
 };
 
 let saveTimer = 0;
@@ -68,6 +70,7 @@ export const SaveManager = {
         ...data,
         jobs: { ...fresh.jobs, ...data.jobs },
         story: { ...fresh.story, ...data.story },
+        gas: { ...fresh.gas, ...data.gas },
         playerStats: Object.fromEntries(
           (Object.keys(fresh.playerStats) as JobId[]).map((j) => [
             j,

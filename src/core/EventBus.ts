@@ -18,6 +18,8 @@ export const GameEvents = {
   LevelUp: 'level-up',
   /** () ステータスポイントを振った */
   StatsChanged: 'stats-changed',
+  /** () 回復ボタンが押された（ガソリンを使う） */
+  UseGas: 'use-gas',
   /** () ジョブを切り替えた */
   JobChanged: 'job-changed',
   /** () 装備の付け替え・売却 */

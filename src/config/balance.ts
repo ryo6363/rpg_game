@@ -82,6 +82,26 @@ export const STAT_POINT_VALUES = {
   crit: 0.005,
 } as const;
 
+/** 回復アイテム「ガソリン」（data/gas.ts） */
+export const GAS = {
+  /** 最大 HP に対する回復量 */
+  heal: { normal: 0.25, magic: 0.4, rare: 0.6, legendary: 1.0 },
+  /** 雑魚が落とす確率（敵の dropRate を掛ける） */
+  dropChance: 0.08,
+  /** ボスが落とす数（ハイオク以上） */
+  bossDrop: 3,
+  /** 1種類あたり持てる数 */
+  maxStack: 9,
+  /** 使ったあと、次に使えるまでの秒数 */
+  cooldown: 1.0,
+} as const;
+
+/** やられたとき */
+export const DEATH = {
+  /** 今のレベルで次のレベルまでに必要な経験値の、この割合を失う（レベルは下がらない） */
+  expLossRatio: 0.25,
+} as const;
+
 /** 経験値・レベル */
 export const EXP = {
   /** 次のレベルまでの必要経験値 = base × level ^ exponent */

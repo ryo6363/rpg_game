@@ -127,8 +127,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.frozenTime = 0;
     this.buffs = [];
     this.recalcStats(true);
+    this.scene.tweens.killTweensOf(this);
     this.setPosition(x, y);
-    this.setAlpha(1).setAngle(0);
+    this.setAlpha(1).setAngle(0).setScale(1);
     this.invulnerable = 1.5;
   }
 

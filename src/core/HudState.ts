@@ -18,5 +18,8 @@ export const HudState = {
   skillsEnabled: true,
   /** 戦闘中のボス（HP バーを出す） */
   /** attack = いま使っている技の名前（溜め・突進・特殊技の間だけ） */
-  boss: null as { name: string; hp: number; maxHp: number; attack: string | null } | null,
+  /** cast = 攻撃の溜めの進み具合 0〜1（溜め中だけ。詠唱バー） */
+  boss: null as { name: string; hp: number; maxHp: number; attack: string | null; cast: number | null } | null,
+  /** 回復ボタン：持っているガソリンの数・使えるまでの残り（0〜1） */
+  gas: { count: 0, cooldown: 0 },
 };

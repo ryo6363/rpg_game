@@ -68,7 +68,9 @@ export class StatusScene extends Phaser.Scene {
     const rowH = 20;
     for (const key of STAT_ALLOC_ORDER) {
       const meta = STAT_ALLOC_META[key];
-      const pts = ps.allocatedStats[key];
+      const own = ps.allocatedStats[key];
+      const jobBonus = job.statBonus[key] ?? 0;
+      const pts = own + jobBonus;
       if (this.lastUp === key) {
         const glow = this.add.rectangle(left - 3, y - 3, right - left + 6, rowH - 2, 0xffd23f, 0.25).setOrigin(0);
         this.root.add(glow);
@@ -77,6 +79,7 @@ export class StatusScene extends Phaser.Scene {
       this.text(left, y + 2, meta.label, 8, '#f4f4f4');
       this.text(left + 62, y + 2, `Lv ${pts}`, 8, pts > 0 ? '#f4f4f4' : '#566c86');
       this.text(left + 96, y + 4, allocationBonusText(key, pts), 6, pts > 0 ? '#a7f070' : '#566c86');
+      if (jobBonus > 0) this.text(left + 62, y + 12, `（${job.name} +${jobBonus}）`, 6, '#ffd23f');
       const can = ps.statPoints > 0;
       this.button(right - 20, y, 20, 14, '＋', can ? 0x257179 : 0x333c57, can, () => {
         if (!allocateStatPoint(key)) return;
@@ -106,6 +109,7 @@ export class StatusScene extends Phaser.Scene {
     const notes = [
       'レベルが1上がるごとに1ポイントもらえます。',
       'ポイントはジョブごとに別々です。',
+      'ジョブの得意分野は、はじめから Lv+10 です。',
       '振ったポイントは、今は戻せません。',
     ];
     notes.forEach((n, i) => this.text(left, Math.min(y, H - safe.bottom - 34) + i * 9, n, 6, '#566c86'));

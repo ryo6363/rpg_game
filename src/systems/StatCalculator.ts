@@ -26,6 +26,13 @@ export function allocationModifiers(alloc: StatAllocation): {
   return { pct, add };
 }
 
+/** 振ったポイント + ジョブの得意分野（戦士：防御力 +10 など） */
+export function withJobBonus(jobId: JobId, alloc?: StatAllocation): StatAllocation {
+  const out: StatAllocation = { attack: 0, defense: 0, speed: 0, hp: 0, crit: 0, ...alloc };
+  for (const [k, v] of Object.entries(JOBS[jobId].statBonus) as [StatAllocKey, number][]) out[k] += v;
+  return out;
+}
+
 /**
  * 最終ステータスの計算（ここ1か所に集約）
  *   (ジョブ基礎 + Lv成長 + 装備の足し算) × (1 + 装備の%上昇) × (1 + ステータスポイントの%上昇)
@@ -57,9 +64,9 @@ export function calcPlayerStats(
   }
   for (const [k, v] of Object.entries(pct) as [StatKey, number][]) stats[k] *= 1 + v;
 
-  // ステータスポイント
-  if (alloc) {
-    const mod = allocationModifiers(alloc);
+  // ステータスポイント（ジョブの得意分野の Lv も足す）
+  {
+    const mod = allocationModifiers(withJobBonus(jobId, alloc));
     for (const [k, v] of Object.entries(mod.pct) as [StatKey, number][]) stats[k] *= 1 + v;
     for (const [k, v] of Object.entries(mod.add) as [StatKey, number][]) stats[k] += v;
   }

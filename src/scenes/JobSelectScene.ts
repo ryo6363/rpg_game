@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { EventBus, GameEvents } from '../core/EventBus';
 import { gameState } from '../core/GameState';
 import { SaveManager } from '../core/SaveManager';
-import type { JobId } from '../core/types';
+import type { JobId, StatAllocKey } from '../core/types';
+import { STAT_ALLOC_META } from '../data/statPoints';
 import { viewport } from '../core/Viewport';
 import { JOBS } from '../data/jobs';
 import { SKILLS } from '../data/skills';
@@ -58,6 +59,11 @@ export class JobSelectScene extends Phaser.Scene {
     this.put(this.add.image(x + 18, y + 18, job.sprite, 0).setScale(2));
     this.put(createText(this, x + 36, y + 4, job.name, 8, current ? '#ffd23f' : '#f4f4f4'));
     this.put(createText(this, x + 36, y + 15, `Lv${prog.level}`, 6, '#a7f070'));
+    // 得意分野：ステータスの Lv にはじめから加わる
+    const bonus = (Object.entries(job.statBonus) as [StatAllocKey, number][])
+      .map(([k, v]) => `${STAT_ALLOC_META[k].label} Lv+${v}`)
+      .join('・');
+    this.put(createText(this, x + 60, y + 15, `得意：${bonus}`, 6, '#ffd23f'));
     this.put(
       createText(this, x + 36, y + 24, job.description, 6, '#94b0c2', { wordWrap: { width: w - 40, useAdvancedWrap: true } }),
     );

@@ -13,10 +13,12 @@ export const JOBS: Record<JobId, JobDef> = {
     growth: { maxHp: 14, atk: 2, def: 1.2 },
     basicAttack: 'warrior_slash',
     skills: [
-      { id: 'warrior_tackle', unlockLevel: 1 },
-      { id: 'warrior_spin', unlockLevel: 3 },
-      { id: 'warrior_nitro', unlockLevel: 6 },
+      { id: 'warrior_tackle', unlockLevel: 5 },
+      { id: 'warrior_spin', unlockLevel: 15 },
+      { id: 'warrior_nitro', unlockLevel: 30 },
     ],
+    // 得意分野：防御力
+    statBonus: { defense: 10 },
   },
   mage: {
     id: 'mage',
@@ -29,10 +31,12 @@ export const JOBS: Record<JobId, JobDef> = {
     growth: { maxHp: 9, atk: 2.4, def: 0.6 },
     basicAttack: 'mage_orb',
     skills: [
-      { id: 'mage_flame', unlockLevel: 1 },
-      { id: 'mage_scatter', unlockLevel: 3 },
-      { id: 'mage_thunder', unlockLevel: 6 },
+      { id: 'mage_flame', unlockLevel: 5 },
+      { id: 'mage_scatter', unlockLevel: 15 },
+      { id: 'mage_thunder', unlockLevel: 30 },
     ],
+    // 得意分野：攻撃力
+    statBonus: { attack: 10 },
   },
   hunter: {
     id: 'hunter',
@@ -45,9 +49,11 @@ export const JOBS: Record<JobId, JobDef> = {
     growth: { maxHp: 10, atk: 1.6, def: 0.8 },
     basicAttack: 'hunter_bolt',
     skills: [
-      { id: 'hunter_triple', unlockLevel: 1 },
-      { id: 'hunter_pierce', unlockLevel: 3 },
-      { id: 'hunter_rain', unlockLevel: 6 },
+      { id: 'hunter_triple', unlockLevel: 5 },
+      { id: 'hunter_pierce', unlockLevel: 15 },
+      { id: 'hunter_rain', unlockLevel: 30 },
     ],
+    // 得意分野：会心率
+    statBonus: { crit: 10 },
   },
 };

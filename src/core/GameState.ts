@@ -1,4 +1,4 @@
-import type { ArmorSlot, ItemInstance, JobId, PlayerStatPoints } from './types';
+import type { ArmorSlot, ItemInstance, JobId, PlayerStatPoints, Rarity } from './types';
 import { JOBS } from '../data/jobs';
 import { createItem } from '../systems/Items';
 import { newStatPoints } from '../data/statPoints';
@@ -34,6 +34,8 @@ export interface GameStateData {
   story: StoryProgress;
   /** ステータスポイントと振り分け（レベルと同じくジョブごと） */
   playerStats: Record<JobId, PlayerStatPoints>;
+  /** 回復アイテム「ガソリン」の数（レアリティごと・全ジョブ共通） */
+  gas: Record<Rarity, number>;
 }
 
 export function createNewState(): GameStateData {
@@ -53,6 +55,8 @@ export function createNewState(): GameStateData {
     },
     story: { loop: 1, chapter: 1, flags: [] },
     playerStats: { warrior: newStatPoints(), mage: newStatPoints(), hunter: newStatPoints() },
+    // はじめはレギュラーを少しだけ
+    gas: { normal: 2, magic: 0, rare: 0, legendary: 0 },
   };
 }
 

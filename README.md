@@ -32,7 +32,9 @@ npm run dev
 |---|---|---|
 | 移動 | 画面左下を触ってドラッグ（仮想スティック） | WASD / 矢印キー |
 | 通常攻撃 | 右下「攻撃」を押しっぱなし（最寄りの敵へ自動で向く） | J / Space |
-| スキル | 右下の青いボタン（Lv1 / 3 / 6 で解放。暗い扇形はクールダウン） | 1 / 2 / 3 |
+| スキル | 右下の青いボタン（Lv5 / 15 / 30 で解放。暗い扇形はクールダウン） | 1 / 2 / 3 |
+| 給油（回復） | 攻撃ボタンの左下の緑のボタン（右上の数字は持っているガソリンの数） | H |
+| ステータス | 右上の棒グラフのボタン（持ち物ボタンの左） | C |
 | 話す（町） | NPC に近づくと攻撃ボタンが「話す」になる | J / Space |
 | 持ち物・装備 | 右上のカバンボタン | I（閉じるのは I / Esc） |
 
@@ -84,6 +86,10 @@ src/
 - **敵を増やす**: `data/sprites.ts` に見た目、`data/enemies.ts` に定義を追加し、`data/areas.ts` の `enemies` に登録
 - **敵の攻撃範囲（予兆）**: `data/enemies.ts` の `attack` に形（円 circle／扇 cone／直線 line／ドーナツ ring／十字 cross／長方形 rect）と溜め時間を書く。連続攻撃（repeat）・ばらまき（scatter）・突進の接触判定（contact）・炎の床（trail）・弾（projectile）・水たまりを残す（leaveWater）・引き寄せ（pull）・特殊技（special：王都崩壊／時葬／輪廻断絶／潜航／津波・尻尾の薙ぎ払い／渦の弾幕／幻影／輪廻の海／時計盤の針／時間逆行／過去再演／輪廻の鎖／終焉時計／時間停止）も指定できる。敵そのものには透明化（blink）・防御姿勢（guard）・戦闘中の台詞（barks）・確定ドロップ（guaranteedLoot）・低確率の特別ドロップ（rareDrop）・数回に1回の別攻撃（altAttack）・群れ（pack）・色味（tint）・飛行（hover）を付けられる。過去再演は、指定したボスの技（data/enemies.ts の patterns）をそのまま幻影に使わせる見た目の色は `config/balance.ts` の TELEGRAPH
 - **新しい敵の動き**: `systems/EnemyAI.ts` に関数を追加して `ENEMY_AI` に登録
+- **ジョブの得意分野**: `data/jobs.ts` の `statBonus`（戦士：防御力 Lv+10、魔法使い：攻撃力 Lv+10、狩人：会心率 Lv+10）。ステータスポイントの Lv にはじめから加わる
+- **回復アイテム（ガソリン）**: レアリティごとに4種類（`data/gas.ts`）。回復量・ドロップ率・持てる数は `config/balance.ts` の GAS。持ち物の枠は使わない
+- **やられたとき**: 次のレベルまでに必要な経験値の 25% を失う（レベルは下がらない）。割合は `config/balance.ts` の DEATH
+- **ボス戦の会話**: 攻撃ボタンの連打で読み飛ばさないよう、画面のタップでは送らず「次へ」ボタン（PC は Enter）で送る。ボスの HP バーの下に、技の溜めの進み具合（詠唱バー）が出る
 - **ステータスポイント**: Lv1 で1ポイント、レベルが1上がるごとに1ポイント（ジョブごと）。画面右上の持ち物ボタンの左にあるステータスボタン（PC は C キー）から攻撃力・防御力・速度・HPアップ・会心率に振る。1ポイントあたりの上昇量は `config/balance.ts` の STAT_POINT_VALUES、もらえる数は STAT_POINTS。最終ステータスの計算は `systems/StatCalculator.ts` に集約（ポイントの補正は allocationModifiers。一定数振ったときの追加効果などはここに足す）
 - **装備の種類を増やす**: `data/itemBases.ts` に追加（アイコンは `data/sprites.ts` の ICON_SPRITES）
 - **追加効果を増やす**: `data/affixes.ts` に追加。ドロップ率・レアリティ確率などは `config/balance.ts` の LOOT
