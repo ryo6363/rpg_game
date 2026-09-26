@@ -7,7 +7,7 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "phone": "vite build && vite preview --host",
+    "phone": "vite build && node scripts/phone-server.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -34,12 +34,18 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // 番号が使えないときに別の番号へ逃げない（スマホで開くアドレスが変わってしまうため）
+    strictPort: true,
+    allowedHosts: ['.local'],
     // Windows ではファイル変更の検知を取りこぼし、古いコードが配信されることがあるためポーリングで監視する
     watch: { usePolling: true, interval: 300 },
   },
   preview: {
     host: true,
     port: 4173,
+    strictPort: true,
+    // 「PCの名前.local」でも開けるように（IP アドレスが変わっても同じアドレスで開ける）
+    allowedHosts: ['.local'],
     // ビルド結果の確認用（iPhone で遊ぶとき）。こちらもキャッシュさせない
     headers: { 'Cache-Control': 'no-store' },
   },
